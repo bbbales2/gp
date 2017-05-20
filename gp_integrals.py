@@ -6,8 +6,8 @@ from numpy import eye as identity
 from math import erf, exp, pi, sqrt
 import matplotlib.pyplot as plt
 
-l = 1.2
-a = 1.0
+l = 0.5
+a = 0.5
 sig = 0.0
 
 def R(tj, tk):
@@ -72,7 +72,7 @@ def mu(K, KsK, y):
     Kt = K.copy()
 
     for i in range(N):
-        Kt[i + 1] += sig**2;
+        Kt[i + 1, i + 1] += sig**2;
 
     return KsK.dot(numpy.linalg.solve(Kt, y))
 
@@ -82,7 +82,7 @@ def cov(K, KsK, KsKs):
     Kt = K.copy()
 
     for i in range(N):
-        Kt[i + 1] += sig**2;
+        Kt[i + 1, i + 1] += sig**2;
 
     return KsKs - KsK.dot(numpy.linalg.solve(Kt, KKs))
 
@@ -95,8 +95,8 @@ plt.show()
 
 for i in range(I):
     plt.plot(ys, yd[i], '-*', alpha = 0.25)
-plt.plot(xs[1:], y[1:], 'r*')
 plt.plot(ys, mu(K, KsK, y), 'r')
+plt.plot(xs[1:], y[1:], 'b*')
 plt.show()
 
 for i in range(I):
