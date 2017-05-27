@@ -122,5 +122,5 @@ plt.plot(ts, y, 'b*')
 plt.show()
 
 for i in range(I):
-    plt.plot(tts, yi[i], '*', alpha = 0.25)
+    plt.plot(tts, yi[i], '-*', alpha = 0.25)
 plt.plot(tts, mu(K, KsKi, y), 'g')
