@@ -90,7 +90,7 @@ df %>% ggplot(aes(time, y)) +
       KsKs - KsK %*% solve(K, KKs) + diag(1e-8, nrow(K), ncol(K))
     }
     
-    out = mvrnorm(1, build_mu(K, KsK, y), build_cov(K, KsK, KsKs)) + rnorm(2 * N) * sy
+    out = mvrnorm(1, build_mu(K, KsK, y), build_cov(K, KsK, KsKs))
     list(out[1:N], out[(N + 1) : (2 * N)])
   }
   
