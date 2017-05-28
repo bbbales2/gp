@@ -3,12 +3,9 @@ library(tidyverse)
 library(rstan)
 library(ggplot2)
 library(deSolve)
+library(GGally)
 
 setwd("~/gp")
-
-#l = 1.0
-#a = 1.0
-#s = 1e-1
 
 gl = 9.8
 
@@ -32,112 +29,149 @@ df = bind_rows(lout %>% mutate(type = "linearized"), fout %>% mutate(type = "ful
 df = df %>% mutate(ynoise = y + rnorm(nrow(df), mean = 0.0, sd = 0.1)) %>%
   mutate(ypnoise = yp + rnorm(nrow(df), mean = 0.0, sd = 0.1))
 
-#df = df %>% mutate(ypl = -gl * y)
-
 dft = df %>% filter(type == "full")
-#%>%
-# group_by(type) %>% mutate(ypfd = (lead(ynoise) - lag(ynoise)) / (lead(time) - lag(time))) %>% ungroup()
-
-dft %>% ggplot(aes(time, yp)) +
-  geom_line() +
-  geom_point(aes(time, ypfd)) +
-  geom_point(aes(time, ypl))
 
 df %>% ggplot(aes(time, y)) +
   geom_line(aes(colour = type)) +
   geom_point(aes(time, ynoise, colour = type))
 
-sdata = list(N = nrow(dft),
-             t = dft$time,
-             y = dft$ynoise)
+# Find GP hyperparameters
+{
+  sdata = list(N = nrow(dft),
+               t = dft$time,
+               y = dft$ynoise)
+  
+  fit = stan("/home/bbales2/gp/models/fit_hyperparameters.stan", data = sdata, cores = 4, iter = 1000)
+  
+  s = extract(fit, pars = c("rho", "alpha", "sigma"))
+}
 
-fit = stan("/home/bbales2/gp/models/fit_hyperparameters.stan", data = sdata, cores = 4, iter = 1000)
-
-s = extract(fit, pars = c("rho", "alpha", "sigma"))
-
-pairs(s)
-
-l = median(s$rho)
-a = median(s$alpha)
-sy = median(s$sigma)
-
-N = nrow(dft)
-ti = dft$time
-y = c(dft$ynoise, dft$ypnoise)
- 
-KK = matrix(0, N, N)
-K = matrix(0, 2 * N, 2 * N)
-KsK = matrix(0, 2 * N, 2 * N)
-KsKs = matrix(0, 2 * N, 2 * N)
-
-for(jt in 1:N) {
-  for(kt in 1:N) {
-    K[jt, kt] = QQ(ti[jt], ti[kt])
-    K[jt + N, kt] = RQ(ti[jt], ti[kt])
-    K[jt, kt + N] = QR(ti[jt], ti[kt])
-    K[jt + N, kt + N] = RR(ti[jt], ti[kt])
+# Impute data and fit with linearized system
+{
+  sample_derivs = function(l, a, sy) {
+    N = nrow(dft)
+    ti = dft$time
+    y = c(dft$ynoise, dft$ypnoise)
     
-    KsK[jt, kt] = RQ(ti[jt], ti[kt])
-    KsK[jt + N, kt] = TQ(ti[jt], ti[kt])
-    KsK[jt, kt + N] = RR(ti[jt], ti[kt])
-    KsK[jt + N, kt + N] = TR(ti[jt], ti[kt])
+    K = matrix(0, 2 * N, 2 * N)
+    KsK = matrix(0, 2 * N, 2 * N)
+    KsKs = matrix(0, 2 * N, 2 * N)
     
-    KsKs[jt, kt] = RR(ti[jt], ti[kt])
-    KsKs[jt + N, kt] = TR(ti[jt], ti[kt])
-    KsKs[jt, kt + N] = RT(ti[jt], ti[kt])
-    KsKs[jt + N, kt + N] = TT(ti[jt], ti[kt])
+    for(jt in 1:N) {
+      for(kt in 1:N) {
+        K[jt, kt] = a^2 * QQ(ti[jt], ti[kt], l)
+        K[jt + N, kt] = a^2 * RQ(ti[jt], ti[kt], l)
+        K[jt, kt + N] = a^2 * QR(ti[jt], ti[kt], l)
+        K[jt + N, kt + N] = a^2 * RR(ti[jt], ti[kt], l)
+        
+        KsK[jt, kt] = a^2 * RQ(ti[jt], ti[kt], l)
+        KsK[jt + N, kt] = a^2 * TQ(ti[jt], ti[kt], l)
+        KsK[jt, kt + N] = a^2 * RR(ti[jt], ti[kt], l)
+        KsK[jt + N, kt + N] = a^2 * TR(ti[jt], ti[kt], l)
+        
+        KsKs[jt, kt] = a^2 * RR(ti[jt], ti[kt], l)
+        KsKs[jt + N, kt] = a^2 * TR(ti[jt], ti[kt], l)
+        KsKs[jt, kt + N] = a^2 * RT(ti[jt], ti[kt], l)
+        KsKs[jt + N, kt + N] = a^2 * TT(ti[jt], ti[kt], l)
+      }
+    }
+    
+    build_mu = function(K, KsK, y) {
+      diag(K) = diag(K) + sy^2
+      
+      KsK %*% solve(K, y)
+    }
+    
+    build_cov = function(K, KsK, KsKs) {
+      KKs = t(KsK)
+      
+      diag(K) = diag(K) + sy^2
+      
+      KsKs - KsK %*% solve(K, KKs) + diag(1e-8, nrow(K), ncol(K))
+    }
+    
+    out = mvrnorm(1, build_mu(K, KsK, y), build_cov(K, KsK, KsKs)) + rnorm(2 * N) * sy
+    list(out[1:N], out[(N + 1) : (2 * N)])
   }
-}
-
-build_mu = function(K, KsK, y) {
-  diag(K) = diag(K) + sy^2
   
-  KsK %*% solve(K, y)
-}
-
-build_cov = function(K, KsK, KsKs) {
-  KKs = t(KsK)
+  fits = list()
+  sf = stan_model("/home/bbales2/gp/models/fit_ypypp.stan")
+  for(i in 1:500) {
+    ypypp = sample_derivs(s$rho[i], s$alpha[i], s$sigma[i])
   
-  diag(K) = diag(K) + sy^2
-
-  KsKs - KsK %*% solve(K, KKs) + diag(1e-8, nrow(K), ncol(K))
+    sdata = list(N = nrow(dft),
+                 t = dft$time,
+                 y = dft$ynoise,
+                 yp = dft$ypnoise,
+                 yph = ypypp[[1]],
+                 ypph = ypypp[[2]])
+    
+    fits[i] = sampling(sf, data = sdata, chains = 1, cores = 1, iter = 1000)
+  }
+  
+  df_impute2 = bind_rows(lapply(fits, function(x) {
+    extract(x, pars = c("a", "b", "c", "d", "sigmay", "sigmayp"))
+  })) %>% sample_frac(1.0)
+  
+  df_impute2 %>% sample_n(2000) %>% ggpairs()
 }
 
-out = mvrnorm(5, build_mu(K, KsK, y), build_cov(K, KsK, KsKs))
-LL = build_cov(K, KsK, KsKs)
-#out1 = array(out, dim = c(5, 201, 2))
-#plot(ti, out1[1,, 1])
-#points(ti, out1[2,, 1])
-#points(ti, out1[3,, 1])
-#points(ti, out1[4,, 1])
-#points(ti, y[1:201], col = "red")
+# Fit data using finite difference derivative approximations and linear system
+{
+  sdata = list(N = nrow(dft),
+               t = dft$time,
+               y = dft$ynoise,
+               yp = dft$ypnoise)
+  
+  fit = stan("/home/bbales2/gp/models/fit_fd.stan", data = sdata, cores = 4, iter = 2000)
+  
+  df_fd = as_tibble(extract(fit, c("a", "b", "c", "d", "sigmay", "sigmayp")))
+  
+  df_fd %>% ggpairs
+}
 
-sdata = list(N = nrow(dft),
-             t = dft$time,
-             y = dft$ynoise,
-             yp = dft$ypnoise,
-             mu = as.vector(build_mu(K, KsK, c(dft$ynoise, dft$ypnoise))),
-             L = chol(build_cov(K, KsK, KsKs)))
+# Fit data using finite difference derivatives and Kennedy-O'Hagan-like model
+#   and infer all the hyperparameters
+{
+  sdata = list(N = nrow(dft),
+               t = dft$time,
+               y = dft$ynoise,
+               yp = dft$ypnoise)
+  
+  fit = stan("/home/bbales2/gp/models/fit_gp.stan", data = sdata, chains = 4, cores = 4, iter = 1000)
+  
+  s1 = as_tibble(extract(fit, c("a", "b", "c", "d", "alphayp", "alphaypp", "rho", "sigmayp", "sigmaypp")))
+  
+  plot(t(extract(fit, "ypm"))[[1]][500,])
+  
+  s1 %>% ggpairs
+}
 
-fit = stan("/home/bbales2/gp/models/fit_gp.stan", data = sdata, chains = 1, iter = 200)
+# Fit data using finite difference derivatives and Kennedy-O'Hagan-like model
+#   and do *not* infer all the hyperparameters
+{
+  sdata = list(N = nrow(dft),
+               t = dft$time,
+               y = dft$ynoise,
+               yp = dft$ypnoise,
+               alphayp = 0.1,
+               alphaypp = 0.1,
+               rho = 0.5)
+  
+  fit = stan("/home/bbales2/gp/models/fit_gp_fixed_hyperparam.stan", data = sdata, chains = 4, cores = 4, iter = 1000)
+  
+  s1 = as_tibble(extract(fit, c("a", "b", "c", "d", "sigmayp", "sigmaypp")))
+  
+  plot(t(extract(fit, "ypm"))[[1]][1000,])
+  
+  s1 %>% ggpairs
+}
 
-s1 = extract(fit, c("a", "b", "c", "d", "sigmay", "sigmayp"))
-
-pairs(s1)
-
-sdata = list(N = nrow(dft),
-             t = dft$time,
-             y = dft$ynoise,
-             yp = dft$ypnoise)
-
-fit = stan("/home/bbales2/gp/models/fit_fd.stan", data = sdata, cores = 4, iter = 200)
-
-s1 = extract(fit, c("a", "b", "c", "d", "sigmay", "sigmayp"))
-
-pairs(s1)
-
-fit = stan("/home/bbales2/gp/models/fit_fd_correct.stan", data = sdata, cores = 4, iter = 1000)
-
-s2 = extract(fit, c("b", "c", "sigmay", "sigmayp"))
-
-pairs(s2)
+# Fit data using finite difference derivatives and full non-linear model
+{
+  fit = stan("/home/bbales2/gp/models/fit_fd_correct.stan", data = sdata, cores = 4, iter = 1000)
+  
+  s2 = extract(fit, c("b", "c", "sigmay", "sigmayp"))
+  
+  pairs(s2)
+}
