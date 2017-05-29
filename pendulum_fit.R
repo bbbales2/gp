@@ -140,9 +140,9 @@ df %>% ggplot(aes(time, y)) +
   
   fit = stan("/home/bbales2/gp/models/fit_gp.stan", data = sdata, chains = 4, cores = 4, iter = 1000)
   
-  s1 = as_tibble(extract(fit, c("a", "b", "c", "d", "alphayp", "alphaypp", "rho", "sigmayp", "sigmaypp")))
+  s1 = as_tibble(extract(fit, c("a", "b", "c", "d", "alphayp", "alphaypp", "sigmayp", "sigmaypp")))
   
-  plot(t(extract(fit, "ypm"))[[1]][500,])
+  plot(t(extract(fit, "ypm"))[[1]][400,])
   
   s1 %>% ggpairs
 }
