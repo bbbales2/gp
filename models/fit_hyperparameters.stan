@@ -23,9 +23,11 @@ model {
   for (k in 1:N)
     Sigma[k, k] = Sigma[k, k] + sq_sigma;
   L_Sigma = cholesky_decompose(Sigma);
+  
   rho ~ gamma(4, 4);
   alpha ~ normal(0, 1);
   sigma ~ normal(0, 1);
+  
   y ~ multi_normal_cholesky(mu, L_Sigma);
 }
 

@@ -3,32 +3,30 @@ data {
   real t[N];
   vector[N] y;
   vector[N] yp;
+  vector[N] yd;
+  vector[N] ypd;
   real alphayp;
   real alphaypp;
   real rho;
 }
 
 transformed data {
-  vector[N - 2] yd;
-  vector[N - 2] ypd;
+  real ya[N];
+  real ypa[N];
+  matrix[N, N] Sigma;
+  matrix[N, N] L_Sigma;
   
-  matrix[N - 2, N - 2] Sigmayp = cov_exp_quad(t[2:(N - 1)], alphayp, rho);
-  matrix[N - 2, N - 2] L_Sigmayp;
-  matrix[N - 2, N - 2] Sigmaypp = cov_exp_quad(t[2:(N - 1)], alphaypp, rho);
-  matrix[N - 2, N - 2] L_Sigmaypp;
+  for(n in 1 : N) {
+    ya[n] = y[n];
+    ypa[n] = yp[n];
+  }
   
-  for(n in 2 : N - 1) {
-    yd[n - 1] = (y[n + 1] - y[n - 1]) / (t[n + 1] - t[n - 1]);
-    ypd[n - 1] = (yp[n + 1] - yp[n - 1]) / (t[n + 1] - t[n - 1]);
-  }
-    
-  for(n in 1:N - 2) {
-    Sigmayp[n, n] = Sigmayp[n, n] + 1e-8;
-    Sigmaypp[n, n] = Sigmaypp[n, n] + 1e-8;
-  }
-    
-  L_Sigmayp = cholesky_decompose(Sigmayp);
-  L_Sigmaypp = cholesky_decompose(Sigmaypp);
+  Sigma = cov_exp_quad(ya, 1.0, rho) .* cov_exp_quad(ypa, 1.0, rho);
+  
+  for(n in 1:N)
+    Sigma[n, n] = Sigma[n, n] + 1e-12;
+
+  L_Sigma = cholesky_decompose(Sigma);
 }
 
 parameters {
@@ -39,16 +37,16 @@ parameters {
   real<lower=0> sigmayp;
   real<lower=0> sigmaypp;
   
-  vector[N - 2] etay;
-  vector[N - 2] etayp;
+  vector[N] etay;
+  vector[N] etayp;
 }
 
 transformed parameters {
-  vector[N - 2] ypm;
-  vector[N - 2] yppm;
+  vector[N] ypm;
+  vector[N] yppm;
   
-  ypm = L_Sigmayp * etay;
-  yppm = L_Sigmaypp * etayp;
+  ypm = alphayp * L_Sigma * etay;
+  yppm = alphaypp * L_Sigma * etayp;
 }
 
 model {
@@ -58,7 +56,14 @@ model {
   etay ~ normal(0, 1);
   etayp ~ normal(0, 1);
   
-  yd ~ normal(a * y[2 : N - 1] + b * yp[2 : N - 1] + ypm, sigmayp);
-  ypd ~ normal(c * y[2 : N - 1] + d * yp[2 : N - 1] + yppm, sigmaypp);
+  yd ~ normal(a * y + b * yp + ypm, sigmayp);
+  ypd ~ normal(c * y + d * yp + yppm, sigmaypp);
 }
 
+generated quantities {
+  vector[N] lyp;
+  vector[N] lypp;
+  
+  lyp = a * y + b * yp;
+  lypp = c * y + d * yp;
+}

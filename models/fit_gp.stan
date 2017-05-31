@@ -3,18 +3,13 @@ data {
   real t[N];
   vector[N] y;
   vector[N] yp;
+  vector[N] yd;
+  vector[N] ypd;
 }
 
 transformed data {
-  vector[N - 2] yd;
-  vector[N - 2] ypd;
   real ya[N];
   real ypa[N];
-  
-  for(n in 2 : N - 1) {
-    yd[n - 1] = (y[n + 1] - y[n - 1]) / (t[n + 1] - t[n - 1]);
-    ypd[n - 1] = (yp[n + 1] - yp[n - 1]) / (t[n + 1] - t[n - 1]);
-  }
   
   for(n in 1 : N) {
     ya[n] = y[n];
@@ -34,19 +29,19 @@ parameters {
   real<lower=0.0> alphayp;
   real<lower=0.0> alphaypp;
   
-  vector[N - 2] etay;
-  vector[N - 2] etayp;
+  vector[N] etay;
+  vector[N] etayp;
 }
 
 transformed parameters {
-  vector[N - 2] ypm;
-  vector[N - 2] yppm;
+  vector[N] ypm;
+  vector[N] yppm;
 
   {
-    matrix[N - 2, N - 2] Sigma = cov_exp_quad(ya[2:(N - 1)], 1.0, rho[1]) .* cov_exp_quad(ypa[2:(N - 1)], 1.0, rho[2]);
-    matrix[N - 2, N - 2] L_Sigma;
+    matrix[N, N] Sigma = cov_exp_quad(ya, 1.0, rho[1]) .* cov_exp_quad(ypa, 1.0, rho[2]);
+    matrix[N, N] L_Sigma;
     
-    for(n in 1:N - 2)
+    for(n in 1:N)
       Sigma[n, n] = Sigma[n, n] + 1e-12;
   
     L_Sigma = cholesky_decompose(Sigma);
@@ -66,7 +61,7 @@ model {
   etay ~ normal(0, 1);
   etayp ~ normal(0, 1);
   
-  yd ~ normal(a * y[2 : N - 1] + b * yp[2 : N - 1] + ypm, sigmayp);
-  ypd ~ normal(c * y[2 : N - 1] + d * yp[2 : N - 1] + yppm, sigmaypp);
+  yd ~ normal(a * y + b * yp + ypm, sigmayp);
+  ypd ~ normal(c * y + d * yp + yppm, sigmaypp);
 }
 

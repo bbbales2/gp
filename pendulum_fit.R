@@ -19,8 +19,9 @@ linearized = function(t, state, parameters) {
   list(c(state[['yp']], -parameters[['gl']] * state[['y']]))
 }
 
-times = seq(0, 10, by = 0.05)
-y0 = c(y = pi / 4.0, yp = 0.0)
+h = 0.05
+times = seq(0, 1, by = h)
+y0 = c(y = 1.0 * pi / 4.0, yp = 0.0)
 fout = as_tibble(ode(y = y0, times = times, func = full, parms = c(gl = gl))[,])
 lout = as_tibble(ode(y = y0, times = times, func = linearized, parms = c(gl = gl))[,])
 
@@ -29,11 +30,14 @@ df = bind_rows(lout %>% mutate(type = "linearized"), fout %>% mutate(type = "ful
 df = df %>% mutate(ynoise = y + rnorm(nrow(df), mean = 0.0, sd = 0.1)) %>%
   mutate(ypnoise = yp + rnorm(nrow(df), mean = 0.0, sd = 0.1))
 
-dft = df %>% filter(type == "full")
+dft = df %>% filter(type == "full") %>%
+  mutate(yd = (lead(y) - lag(y)) / (2.0 * h)) %>%
+  mutate(ypd = (lead(yp) - lag(yp)) / (2.0 * h)) %>%
+  drop_na()
 
-df %>% ggplot(aes(time, y)) +
+df %>% ggplot(aes(time, yp)) +
   geom_line(aes(colour = type)) +
-  geom_point(aes(time, ynoise, colour = type))
+  geom_point(aes(time, ypnoise, colour = type))
 
 # Find GP hyperparameters
 {
@@ -41,9 +45,17 @@ df %>% ggplot(aes(time, y)) +
                t = dft$time,
                y = dft$ynoise)
   
-  fit = stan("/home/bbales2/gp/models/fit_hyperparameters.stan", data = sdata, cores = 4, iter = 1000)
+  fit = stan("models/fit_hyperparameters.stan", data = sdata, cores = 4, iter = 1000)
   
-  s = extract(fit, pars = c("rho", "alpha", "sigma"))
+  sy = extract(fit, pars = c("rho", "alpha", "sigma"))
+  
+  sdata = list(N = nrow(dft),
+               t = dft$time,
+               y = dft$ypnoise)
+  
+  fit = stan("models/fit_hyperparameters.stan", data = sdata, cores = 4, iter = 1000)
+  
+  syp = extract(fit, pars = c("rho", "alpha", "sigma"))
 }
 
 # Impute data and fit with linearized system
@@ -95,7 +107,7 @@ df %>% ggplot(aes(time, y)) +
   }
   
   fits = list()
-  sf = stan_model("/home/bbales2/gp/models/fit_ypypp.stan")
+  sf = stan_model("models/fit_ypypp.stan")
   for(i in 1:500) {
     ypypp = sample_derivs(s$rho[i], s$alpha[i], s$sigma[i])
   
@@ -121,13 +133,45 @@ df %>% ggplot(aes(time, y)) +
   sdata = list(N = nrow(dft),
                t = dft$time,
                y = dft$ynoise,
-               yp = dft$ypnoise)
+               yp = dft$ypnoise,
+               yd = dft$yd,
+               ydp = dft$ypd)
   
-  fit = stan("/home/bbales2/gp/models/fit_fd.stan", data = sdata, cores = 4, iter = 2000)
+  fit = stan("models/fit_fd.stan", data = sdata, cores = 4, iter = 2000)
   
   df_fd = as_tibble(extract(fit, c("a", "b", "c", "d", "sigmay", "sigmayp")))
   
   df_fd %>% ggpairs
+}
+
+# Fit data using linearized ode
+{
+  sdata = list(N = nrow(dft),
+               t = dft$time,
+               y = dft$ynoise,
+               yp = dft$ypnoise,
+               y0 = y0)
+  
+  fit = stan("models/fit_ode.stan", data = sdata, chains = 1, cores = 1, iter = 1000)
+  
+  s1 = as_tibble(extract(fit, c("a", "b", "c", "d", "sigmayp", "sigmaypp")))
+  
+  s1 %>% ggpairs
+}
+
+# Fit data using linearized ode
+{
+  sdata = list(N = nrow(dft),
+               t = dft$time,
+               y = dft$ynoise,
+               yp = dft$ypnoise,
+               y0 = y0)
+  
+  fit = stan("models/fit_ode.stan", data = sdata, chains = 4, cores = 4, iter = 2000)
+  
+  s1 = as_tibble(extract(fit, c("a", "b", "c", "d", "sigmayp", "sigmaypp")))
+  
+  s1 %>% ggpairs
 }
 
 # Fit data using finite difference derivatives and Kennedy-O'Hagan-like model
@@ -136,13 +180,13 @@ df %>% ggplot(aes(time, y)) +
   sdata = list(N = nrow(dft),
                t = dft$time,
                y = dft$ynoise,
-               yp = dft$ypnoise)
+               yp = dft$ypnoise,
+               yd = dft$yd,
+               ypd = dft$ypd)
   
-  fit = stan("/home/bbales2/gp/models/fit_gp.stan", data = sdata, chains = 4, cores = 4, iter = 1000)
+  fit = stan("models/fit_gp.stan", data = sdata, chains = 4, cores = 4, iter = 1000)
   
   s1 = as_tibble(extract(fit, c("a", "b", "c", "d", "alphayp", "alphaypp", "sigmayp", "sigmaypp")))
-  
-  plot(t(extract(fit, "ypm"))[[1]][400,])
   
   s1 %>% ggpairs
 }
@@ -154,18 +198,46 @@ df %>% ggplot(aes(time, y)) +
                t = dft$time,
                y = dft$ynoise,
                yp = dft$ypnoise,
-               alphayp = 0.1,
-               alphaypp = 0.1,
-               rho = 0.5)
+               yd = dft$yd,
+               ypd = dft$ypd,
+               alphayp = 0.25,
+               alphaypp = 0.25,
+               rho = 2.0)
   
-  fit = stan("/home/bbales2/gp/models/fit_gp_fixed_hyperparam.stan", data = sdata, chains = 4, cores = 4, iter = 1000)
+  fit = stan("models/fit_gp_fixed_hyperparam.stan", data = sdata, chains = 4, cores = 4, iter = 1000)
   
   s1 = as_tibble(extract(fit, c("a", "b", "c", "d", "sigmayp", "sigmaypp")))
   
-  plot(t(extract(fit, "ypm"))[[1]][1000,])
-  
   s1 %>% ggpairs
 }
+
+get_lines = function(fit, x, vnames, n = 100) {
+  a = extract(fit, vnames)
+  idxs = sample(nrow(a[[vnames[[1]]]]), n)
+  
+  out = as_tibble()
+  for(i in 1:length(vnames)) {
+    vname = vnames[[i]];
+    d = a[[vname]][idxs,]
+    colnames(d) <- x
+    d = as_tibble(d) %>% gather(time, data)
+    d$name = vname
+    
+    out = bind_rows(out, d)
+  }
+  out %>% mutate(time = as.double(time))
+}
+a = get_lines(fit, dft$time, c("lyp", "ypm"), 50)
+b = get_lines(fit, dft$time, c("lypp", "yppm"), 50)
+a$state = "yd"
+b$state = "ypd"
+a = bind_rows(a, b)
+
+a %>% ggplot(aes(time, data)) +
+  geom_jitter(aes(color = name), width = 0.05, alpha = 0.25, size = 0.1) +
+  geom_line(data = dft %>% gather(state, data, c(yd, ypd)), aes(color = state)) +
+  facet_grid(state ~ .) +
+  guides(colour = guide_legend(override.aes = list(size = 1, alpha = 1.0)))
 
 # Fit data using finite difference derivatives and full non-linear model
 {
