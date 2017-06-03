@@ -20,24 +20,24 @@ linearized = function(t, state, parameters) {
 }
 
 h = 0.05
-times = seq(0, 1, by = h)
+times = seq(0, 10, by = h)
 y0 = c(y = 1.0 * pi / 4.0, yp = 0.0)
 fout = as_tibble(ode(y = y0, times = times, func = full, parms = c(gl = gl))[,])
 lout = as_tibble(ode(y = y0, times = times, func = linearized, parms = c(gl = gl))[,])
 
 df = bind_rows(lout %>% mutate(type = "linearized"), fout %>% mutate(type = "full")) %>% mutate(type = factor(type))
 
-df = df %>% mutate(ynoise = y + rnorm(nrow(df), mean = 0.0, sd = 0.1)) %>%
-  mutate(ypnoise = yp + rnorm(nrow(df), mean = 0.0, sd = 0.1))
+df = df %>% mutate(ynoise = y + rnorm(nrow(df), mean = 0.0, sd = 0.01)) %>%
+  mutate(ypnoise = yp + rnorm(nrow(df), mean = 0.0, sd = 0.01))
 
 dft = df %>% filter(type == "full") %>%
   mutate(yd = (lead(y) - lag(y)) / (2.0 * h)) %>%
   mutate(ypd = (lead(yp) - lag(yp)) / (2.0 * h)) %>%
   drop_na()
 
-df %>% ggplot(aes(time, yp)) +
+df %>% ggplot(aes(time, y)) +
   geom_line(aes(colour = type)) +
-  geom_point(aes(time, ypnoise, colour = type))
+  geom_point(aes(time, ynoise, colour = type))
 
 # Find GP hyperparameters
 {
@@ -135,11 +135,11 @@ df %>% ggplot(aes(time, yp)) +
                y = dft$ynoise,
                yp = dft$ypnoise,
                yd = dft$yd,
-               ydp = dft$ypd)
+               ypd = dft$ypd)
   
-  fit = stan("models/fit_fd.stan", data = sdata, cores = 4, iter = 2000)
+  fit_fd = stan("models/fit_fd.stan", data = sdata, cores = 4, iter = 2000)
   
-  df_fd = as_tibble(extract(fit, c("a", "b", "c", "d", "sigmay", "sigmayp")))
+  df_fd = as_tibble(extract(fit_fd, c("a", "b", "c", "d")))#, "sigmay", "sigmayp"
   
   df_fd %>% ggpairs
 }
@@ -206,10 +206,15 @@ df %>% ggplot(aes(time, yp)) +
   
   fit = stan("models/fit_gp_fixed_hyperparam.stan", data = sdata, chains = 4, cores = 4, iter = 1000)
   
-  s1 = as_tibble(extract(fit, c("a", "b", "c", "d", "sigmayp", "sigmaypp")))
+  s1 = as_tibble(extract(fit, c("a", "b", "c", "d")))#, "sigmayp", "sigmaypp"
   
   s1 %>% ggpairs
 }
+
+s1$type = 'gp'
+df_fd$type = 'lr'
+bind_rows(s1, df_fd) %>% ggplot(aes(c)) +
+  geom_histogram(aes(fill = type), binwidth = 0.01)
 
 get_lines = function(fit, x, vnames, n = 100) {
   a = extract(fit, vnames)

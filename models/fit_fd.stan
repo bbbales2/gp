@@ -1,6 +1,8 @@
 data {
   int<lower=1> N;
   real t[N];
+  vector[N] y;
+  vector[N] yp;
   vector[N] yd;
   vector[N] ypd;
 }
