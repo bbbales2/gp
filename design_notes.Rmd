@@ -1,0 +1,27 @@
+---
+title: "Design Notes"
+output: html_notebook
+---
+
+$$
+\begin{pmatrix}
+y\\
+y'\\
+y^{'s}\\
+y^{''s}
+\end{pmatrix}
+\sim
+\mathcal{N}
+\left(
+\mu, \pmb K
+\right)
+$$
+
+$$
+\pmb K
+=
+\begin{pmatrix}
+K & K_* K^T\\
+K_*
+\end{pmatrix}
+$$
