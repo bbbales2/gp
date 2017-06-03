@@ -107,8 +107,8 @@ df %>% ggplot(aes(time, y)) +
   }
   
   #get all of our posterior samples as a list of vectors c(rho, alpha, sigma)
-  get_single_sample = function(i) c(rho = s$rho[i], alpha = s$alpha[i], sigma = s$sigma[i])
-  s_list = map(1:500, get_single_sample)
+  get_single_sample = function(i) c(rho = sy$rho[i], alpha = sy$alpha[i], sigma = sy$sigma[i])
+  s_list = map(1:10, get_single_sample)
   
   #for each posterior sample of c(rho, alpha, sigma) get a post. pred. sample of deriv. for both states
   sample_derivs_both_states <- function(params, ynoise, ypnoise, ti) {
@@ -141,81 +141,6 @@ df %>% ggplot(aes(time, y)) +
   })) %>% sample_frac(1.0)
   
   #pairs plot
-  df_impute2 %>% sample_n(2000) %>% ggpairs()
-}
-
-####################################################
-####################################################
-# Impute data and fit with linearized system
-####################################################
-####################################################
-{
-  sample_derivs = function(l, a, sy) {
-    N = nrow(dft)
-    ti = dft$time
-    y = c(dft$ynoise, dft$ypnoise)
-    
-    K = matrix(0, 2 * N, 2 * N)      #cov between old points and old points
-    KsK = matrix(0, 2 * N, 2 * N)    #old points and new points
-    KsKs = matrix(0, 2 * N, 2 * N)   #new points and new points
-    
-    #
-    for(jt in 1:N) {
-      for(kt in 1:N) {
-        K[jt, kt] = a^2 * QQ(ti[jt], ti[kt], l)
-        K[jt + N, kt] = a^2 * RQ(ti[jt], ti[kt], l)
-        K[jt, kt + N] = a^2 * QR(ti[jt], ti[kt], l)
-        K[jt + N, kt + N] = a^2 * RR(ti[jt], ti[kt], l)
-        
-        KsK[jt, kt] = a^2 * RQ(ti[jt], ti[kt], l)
-        KsK[jt + N, kt] = a^2 * TQ(ti[jt], ti[kt], l)
-        KsK[jt, kt + N] = a^2 * RR(ti[jt], ti[kt], l)
-        KsK[jt + N, kt + N] = a^2 * TR(ti[jt], ti[kt], l)
-        
-        KsKs[jt, kt] = a^2 * RR(ti[jt], ti[kt], l)
-        KsKs[jt + N, kt] = a^2 * TR(ti[jt], ti[kt], l)
-        KsKs[jt, kt + N] = a^2 * RT(ti[jt], ti[kt], l)
-        KsKs[jt + N, kt + N] = a^2 * TT(ti[jt], ti[kt], l)
-      }
-    }
-    
-    build_mu = function(K, KsK, y) {
-      diag(K) = diag(K) + sy^2
-      
-      KsK %*% solve(K, y)
-    }
-    
-    build_cov = function(K, KsK, KsKs) {
-      KKs = t(KsK)
-      
-      diag(K) = diag(K) + sy^2
-      
-      KsKs - KsK %*% solve(K, KKs) + diag(1e-8, nrow(K), ncol(K))
-    }
-    
-    out = mvrnorm(1, build_mu(K, KsK, y), build_cov(K, KsK, KsKs))
-    list(out[1:N], out[(N + 1) : (2 * N)])
-  }
-  
-  fits = list()
-  sf = stan_model("models/fit_ypypp.stan")
-  for(i in 1:500) {
-    ypypp = sample_derivs(s$rho[i], s$alpha[i], s$sigma[i])
-  
-    sdata = list(N = nrow(dft),
-                 t = dft$time,
-                 y = dft$ynoise,
-                 yp = dft$ypnoise,
-                 yph = ypypp[[1]],
-                 ypph = ypypp[[2]])
-    
-    fits[i] = sampling(sf, data = sdata, chains = 1, cores = 1, iter = 1000)
-  }
-  
-  df_impute2 = bind_rows(lapply(fits, function(x) {
-    extract(x, pars = c("a", "b", "c", "d", "sigmay", "sigmayp"))
-  })) %>% sample_frac(1.0)
-  
   df_impute2 %>% sample_n(2000) %>% ggpairs()
 }
 
@@ -258,9 +183,9 @@ df %>% ggplot(aes(time, y)) +
                yp = dft$ypnoise,
                y0 = y0)
   
-  fit = stan("models/fit_ode.stan", data = sdata, chains = 4, cores = 4, iter = 2000)
+  fit = stan("models/fit_ode_full.stan", data = sdata, chains = 4, cores = 4, iter = 2000)
   
-  s1 = as_tibble(extract(fit, c("a", "b", "c", "d", "sigmayp", "sigmaypp")))
+  s1 = as_tibble(extract(fit, c("c", "sigmay", "sigmayp")))
   
   s1 %>% ggpairs
 }
