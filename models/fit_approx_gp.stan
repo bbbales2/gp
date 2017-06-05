@@ -1,6 +1,6 @@
 functions {
-  matrix approx_L(int N, int M, real[] xt, real sige, real l) {
-    real a = 1.0 / 4.0;
+  matrix approx_L(int N, int M, real exp_sigma, real[] xt, real gp_sigma, real l) {
+    real a = 1.0 / (4.0 * exp_sigma^2);
     real b = 1.0 / (2.0 * l^2);
     real c = sqrt(a^2.0 + 2.0 * a * b);
     
@@ -25,7 +25,7 @@ functions {
       Htt[:, n] = Ht[n];
     }
     
-    return sige * Htt;
+    return gp_sigma * Htt;
   }
 }
 
@@ -46,7 +46,7 @@ parameters {
 transformed parameters {
   vector[N] zh;
   
-  zh = approx_L(N, M, x, alpha, l) * zm;
+  zh = approx_L(N, M, 1.0, x, alpha, l) * zm;
 }
 
 model {
