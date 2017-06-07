@@ -30,8 +30,8 @@ lout = as_tibble(ode(y = y0, times = times, func = linearized, parms = c(gl = gl
 
 df = bind_rows(lout %>% mutate(type = "linearized"), fout %>% mutate(type = "full")) %>% mutate(type = factor(type))
 
-df = df %>% mutate(ynoise = y + rnorm(nrow(df), mean = 0.0, sd = 0.01)) %>%
-  mutate(ypnoise = yp + rnorm(nrow(df), mean = 0.0, sd = 0.01))
+df = df %>% mutate(ynoise = y + rnorm(nrow(df), mean = 0.0, sd = 0.1)) %>%
+  mutate(ypnoise = yp + rnorm(nrow(df), mean = 0.0, sd = 0.1))
 
 dft = df %>% filter(type == "full") %>%
   mutate(yd = (lead(y) - lag(y)) / (2.0 * h)) %>%
@@ -41,6 +41,149 @@ dft = df %>% filter(type == "full") %>%
 df %>% ggplot(aes(time, y)) +
   geom_line(aes(colour = type)) +
   geom_point(aes(time, ynoise, colour = type), size = 0.5)
+
+
+# Fit data using finite difference derivative approximations and linear system
+{
+  sdata = list(N = nrow(dft),
+               t = dft$time,
+               y = dft$ynoise,
+               yp = dft$ypnoise,
+               yd = dft$yd,
+               ypd = dft$ypd)
+  
+  fit_fd = stan("models/fit_fd.stan", data = sdata, cores = 4, iter = 2000)
+  
+  s1 = as_tibble(extract(fit_fd, c("a", "b", "c", "d")))
+  
+  s1 %>% ggplot(aes(c)) +
+    geom_histogram() +
+    geom_vline(xintercept = -9.8, col = "darkred") +
+    labs(title = "Fit finite differences using linear model")
+}
+
+# Fit data using finite difference derivatives and full non-linear model
+{
+  sdata = list(N = nrow(dft),
+               t = dft$time,
+               y = dft$ynoise,
+               yp = dft$ypnoise,
+               yd = dft$yd,
+               ypd = dft$ypd)
+  
+  fit_fdfull = stan("/home/bbales2/gp/models/fit_fd_full.stan", data = sdata, cores = 4, iter = 2000)
+  
+  s1 = as_tibble(extract(fit_fdfull, c("c", "sigmayp")))
+  
+  s1 %>% ggplot(aes(c)) +
+    geom_histogram() +
+    geom_vline(xintercept = -9.8, col = "darkred") +
+    labs(title = "Fit finite differences using full model")
+}
+
+# Fit data using linearized ode
+{
+  sdata = list(N = nrow(dft),
+               t = dft$time,
+               y = dft$ynoise,
+               yp = dft$ypnoise,
+               y0 = y0)
+  
+  fit_lode = stan("models/fit_ode.stan", data = sdata, chains = 1, cores = 1, iter = 1000)
+  
+  s1 = as_tibble(extract(fit_lode, c("a", "b", "c", "d", "sigmay", "sigmayp")))
+  
+  s1 %>% ggplot(aes(c)) +
+    geom_histogram() +
+    geom_vline(xintercept = -9.8, col = "darkred") +
+    labs(title = "Fit raw data using linearized ODE")
+}
+
+# Fit data using full ode
+{
+  sdata = list(N = nrow(dft),
+               t = dft$time,
+               y = dft$ynoise,
+               yp = dft$ypnoise,
+               y0 = y0)
+  
+  fit_fode = stan("models/fit_ode_full.stan", data = sdata, chains = 1, cores = 1, iter = 1000)
+  
+  s1 = as_tibble(extract(fit_fode, c("c")))
+  
+  s1 %>% ggplot(aes(c)) +
+    geom_histogram() +
+    geom_vline(xintercept = -9.8, col = "darkred") +
+    labs(title = "Fit raw data using full ODE")
+  
+  #get_lines(fit_fode, dft$time, c("ymu"), 100) %>% ggplot(aes(time, data)) +
+  #  geom_point(alpha = 0.1) +
+  #  geom_line(data = dft, aes(time, y), col = "red")
+}
+
+# Fit data using finite difference derivatives and Kennedy-O'Hagan-like model
+#   and infer all the hyperparameters
+{
+  sdata = list(N = nrow(dft),
+               t = dft$time,
+               y = dft$ynoise,
+               yp = dft$ypnoise,
+               yd = dft$yd,
+               ypd = dft$ypd)
+  
+  fit = stan("models/fit_gp.stan", data = sdata, chains = 4, cores = 4, iter = 1000)
+  
+  s1 = as_tibble(extract(fit, c("a", "b", "c", "d", "alphayp", "alphaypp", "sigmayp", "sigmaypp")))
+  
+  s1 %>% filter(c < -5.0) %>% ggplot(aes(c)) +
+    geom_histogram(fill = "red") +
+    geom_histogram(data = s2, alpha = 0.5, fill = "green") +
+    geom_vline(xintercept = -9.8, col = "darkred") +
+    labs(title = "Fit finite differences using linear model + Kennedy O'Hagan + estimate hyperparameters")
+}
+
+# Fit data using finite difference derivatives and Kennedy-O'Hagan-like model
+#   with approximate GPs and infer all the hyperparameters
+{
+  sdata = list(N = nrow(dft),
+               t = dft$time,
+               y = dft$ynoise,
+               yp = dft$ypnoise,
+               yd = dft$yd,
+               ypd = dft$ypd)
+  
+  fit_ko_approx = stan("models/fit_ko_approx.stan", data = sdata, chains = 4, cores = 4, iter = 1000)
+  
+  s2 = as_tibble(extract(fit_ko_approx, c("a", "b", "c", "d", "alphayp", "alphaypp", "sigmayp", "sigmaypp")))
+  
+  s2 %>% ggplot(aes(c)) +
+    geom_histogram() +
+    geom_vline(xintercept = -9.8, col = "darkred") +
+    labs(title = "Fit finite differences using linear model + Kennedy O'Hagan + approx GP + estimate hyperparameters")
+}
+
+# Fit data using finite difference derivatives and Kennedy-O'Hagan-like model
+#   and do *not* infer all the hyperparameters
+{
+  sdata = list(N = nrow(dft),
+               t = dft$time,
+               y = dft$ynoise,
+               yp = dft$ypnoise,
+               yd = dft$yd,
+               ypd = dft$ypd,
+               alphayp = 0.25,
+               alphaypp = 0.25,
+               rho = 2.0)
+  
+  fit_gp_fixed = stan("models/fit_gp_fixed_hyperparam.stan", data = sdata, chains = 4, cores = 4, iter = 1000)
+  
+  s1 = as_tibble(extract(fit_gp_fixed, c("a", "b", "c", "d")))
+  
+  s1 %>% ggplot(aes(c)) +
+    geom_histogram() +
+    geom_vline(xintercept = -9.8, col = "darkred") +
+    labs(title = "Fit finite differences using linear model + Kennedy O'Hagan + fixed hyperparameters")
+}
 
 ####################################################
 ####################################################
@@ -73,42 +216,41 @@ df %>% ggplot(aes(time, y)) +
 # to generate posterior predictive draws of the derivative of the original process.
 ####################################################
 ####################################################
-{
-  #function that takes single posterior sample of rho, alpha, and sigma and returns
-  #a single posterior draw of the derivative process (w/o noise)
-  sample_derivs = function(params, ynoise, ti) {
-    l <- params[1]
-    a <- params[2]
-    sy <- params[3]
-    
-    N = length(ynoise)
-
-    #use outer to create kernel evaluated at all combinations of time points.
-    #the original kernel function take in two time poitns AND an l so we use
-    #kern_fixed_l to make versions of the kernel function w/ a fixed l
-    kern_fixed_l <- function(kern, l) {function(tj, tk) kern(tj, tk, l)} 
-    K <- a^2 * outer(ti, ti, FUN = kern_fixed_l(QQ, l))    #cov between old points and old points
-    KsK <- a^2 * outer(ti, ti, FUN = kern_fixed_l(RQ, l))  #old points and new points
-    KsKs <- a^2 * outer(ti, ti, FUN = kern_fixed_l(RR, l)) #new points and new points
-    
-    build_mu = function(K, KsK, y) {
-      diag(K) = diag(K) + sy^2
-      KsK %*% solve(K, ynoise)
-    }
-    
-    build_cov = function(K, KsK, KsKs) {
-      KKs = t(KsK)
-      diag(K) = diag(K) + sy^2
-      KsKs - KsK %*% solve(K, KKs) + diag(1e-8, nrow(K), ncol(K))
-    }
-    
-    out = mvrnorm(1, build_mu(K, KsK, ynoise), build_cov(K, KsK, KsKs))
-    return(out)
+#function that takes single posterior sample of rho, alpha, and sigma and returns
+#a single posterior draw of the derivative process (w/o noise)
+sample_derivs = function(params, ynoise, ti) {
+  l <- params[1]
+  a <- params[2]
+  sy <- params[3]
+  
+  N = length(ynoise)
+  
+  #use outer to create kernel evaluated at all combinations of time points.
+  #the original kernel function take in two time poitns AND an l so we use
+  #kern_fixed_l to make versions of the kernel function w/ a fixed l
+  kern_fixed_l <- function(kern, l) {function(tj, tk) kern(tj, tk, l)} 
+  K <- a^2 * outer(ti, ti, FUN = kern_fixed_l(QQ, l))    #cov between old points and old points
+  KsK <- a^2 * outer(ti, ti, FUN = kern_fixed_l(RQ, l))  #old points and new points
+  KsKs <- a^2 * outer(ti, ti, FUN = kern_fixed_l(RR, l)) #new points and new points
+  
+  build_mu = function(K, KsK, y) {
+    diag(K) = diag(K) + sy^2
+    KsK %*% solve(K, ynoise)
   }
   
+  build_cov = function(K, KsK, KsKs) {
+    KKs = t(KsK)
+    diag(K) = diag(K) + sy^2
+    KsKs - KsK %*% solve(K, KKs) + diag(1e-8, nrow(K), ncol(K))
+  }
+  
+  out = mvrnorm(1, build_mu(K, KsK, ynoise), build_cov(K, KsK, KsKs))
+  return(out)
+}
+{  
   #get all of our posterior samples as a list of vectors c(rho, alpha, sigma)
   get_single_sample = function(i) c(rho = sy$rho[i], alpha = sy$alpha[i], sigma = sy$sigma[i])
-  s_list = map(1:10, get_single_sample)
+  s_list = map(1:100, get_single_sample)
   
   #for each posterior sample of c(rho, alpha, sigma) get a post. pred. sample of deriv. for both states
   sample_derivs_both_states <- function(params, ynoise, ypnoise, ti) {
@@ -144,87 +286,49 @@ df %>% ggplot(aes(time, y)) +
   df_impute2 %>% sample_n(2000) %>% ggpairs()
 }
 
-# Fit data using finite difference derivative approximations and linear system
-{
-  sdata = list(N = nrow(dft),
-               t = dft$time,
-               y = dft$ynoise,
-               yp = dft$ypnoise,
-               yd = dft$yd,
-               ypd = dft$ypd)
+# Do imputation with approximate Kennedy-O'Hagan
+{  
+  #get all of our posterior samples as a list of vectors c(rho, alpha, sigma)
+  get_single_sample = function(i) c(rho = sy$rho[i], alpha = sy$alpha[i], sigma = sy$sigma[i])
+  s_list = map(1:100, get_single_sample)
   
-  fit_fd = stan("models/fit_fd.stan", data = sdata, cores = 4, iter = 2000)
+  #for each posterior sample of c(rho, alpha, sigma) get a post. pred. sample of deriv. for both states
+  sample_derivs_both_states <- function(params, ynoise, ypnoise, ti) {
+    return(list(yp_hat = sample_derivs(params, ynoise, ti),
+                ypp_hat = sample_derivs(params, ypnoise, ti)))
+  }
+  post_draws <- mclapply(s_list, sample_derivs_both_states, ynoise = dft$ynoise, ypnoise = dft$ypnoise, ti = dft$time, mc.cores = 2)
   
-  df_fd = as_tibble(extract(fit_fd, c("a", "b", "c", "d")))#, "sigmay", "sigmayp"
+  #create a function that does a Stan fit given a list containing yp_hat and ypp_hat
+  sf = stan_model("models/fit_ko_approx.stan")
   
-  df_fd %>% ggpairs
-}
-
-# Fit data using linearized ode
-{
-  sdata = list(N = nrow(dft),
-               t = dft$time,
-               y = dft$ynoise,
-               yp = dft$ypnoise,
-               y0 = y0)
+  get_stan_fit_from_impute <- function(imputed_draw) {
+    sdata = list(N = nrow(dft),
+                 t = dft$time,
+                 y = dft$ynoise,
+                 yp = dft$ypnoise,
+                 yd = imputed_draw$yp_hat,
+                 ypd = imputed_draw$ypp_hat)
+    
+    fit <- sampling(sf, data = sdata, chains = 1, cores = 1, iter = 1000)
+    return(fit)
+  }
   
-  fit = stan("models/fit_ode.stan", data = sdata, chains = 1, cores = 1, iter = 1000)
+  #apply function to get a single Stan fit for each posterior predictive draw all in one big list
+  stan_fits2 <- mclapply(post_draws, get_stan_fit_from_impute, mc.cores = 4)
   
-  s1 = as_tibble(extract(fit, c("a", "b", "c", "d", "sigmayp", "sigmaypp")))
+  #coalesce samples from these stan fits in to a single dataframe
+  df_impute3 = bind_rows(lapply(stan_fits2, function(x) {
+    extract(x, pars = c("a", "b", "c", "d", "sigmayp", "sigmaypp"))
+  })) %>% sample_frac(1.0)
   
-  s1 %>% ggpairs
-}
-
-# Fit data using linearized ode
-{
-  sdata = list(N = nrow(dft),
-               t = dft$time,
-               y = dft$ynoise,
-               yp = dft$ypnoise,
-               y0 = y0)
+  #pairs plot
+  df_impute3 %>% sample_n(2000) %>% ggpairs()
   
-  fit = stan("models/fit_ode_full.stan", data = sdata, chains = 4, cores = 4, iter = 2000)
-  
-  s1 = as_tibble(extract(fit, c("c", "sigmay", "sigmayp")))
-  
-  s1 %>% ggpairs
-}
-
-# Fit data using finite difference derivatives and Kennedy-O'Hagan-like model
-#   and infer all the hyperparameters
-{
-  sdata = list(N = nrow(dft),
-               t = dft$time,
-               y = dft$ynoise,
-               yp = dft$ypnoise,
-               yd = dft$yd,
-               ypd = dft$ypd)
-  
-  fit = stan("models/fit_gp.stan", data = sdata, chains = 4, cores = 4, iter = 1000)
-  
-  s1 = as_tibble(extract(fit, c("a", "b", "c", "d", "alphayp", "alphaypp", "sigmayp", "sigmaypp")))
-  
-  s1 %>% ggpairs
-}
-
-# Fit data using finite difference derivatives and Kennedy-O'Hagan-like model
-#   and do *not* infer all the hyperparameters
-{
-  sdata = list(N = nrow(dft),
-               t = dft$time,
-               y = dft$ynoise,
-               yp = dft$ypnoise,
-               yd = dft$yd,
-               ypd = dft$ypd,
-               alphayp = 0.25,
-               alphaypp = 0.25,
-               rho = 2.0)
-  
-  fit = stan("models/fit_gp_fixed_hyperparam.stan", data = sdata, chains = 4, cores = 4, iter = 1000)
-  
-  s1 = as_tibble(extract(fit, c("a", "b", "c", "d")))#, "sigmayp", "sigmaypp"
-  
-  s1 %>% ggpairs
+  df_impute3 %>% ggplot(aes(c)) +
+    geom_histogram() +
+    geom_vline(xintercept = -9.8, col = "darkred") +
+    labs(title = "Fit inputed derivatives using linear model + Kennedy O'Hagan + approx GP + estimate hyperparameters")
 }
 
 s1$type = 'gp'
@@ -259,12 +363,3 @@ a %>% ggplot(aes(time, data)) +
   geom_line(data = dft %>% gather(state, data, c(yd, ypd)), aes(color = state)) +
   facet_grid(state ~ .) +
   guides(colour = guide_legend(override.aes = list(size = 1, alpha = 1.0)))
-
-# Fit data using finite difference derivatives and full non-linear model
-{
-  fit = stan("/home/bbales2/gp/models/fit_fd_correct.stan", data = sdata, cores = 4, iter = 1000)
-  
-  s2 = extract(fit, c("b", "c", "sigmay", "sigmayp"))
-  
-  pairs(s2)
-}

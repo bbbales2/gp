@@ -22,8 +22,8 @@ transformed data {
 
 parameters {
   real c;
-  real<lower=0> sigmay;
-  real<lower=0> sigmayp;
+  #real<lower=0> sigmay;
+  #real<lower=0> sigmayp;
 }
 
 transformed parameters {
@@ -36,7 +36,7 @@ transformed parameters {
 }
 
 model {
-  c ~ normal(-9.8, 1.0);
+  c ~ normal(0.0, 10.0);
   
   y ~ normal(yh[:, 1], sigmay);
   yp ~ normal(yh[:, 2], sigmayp);

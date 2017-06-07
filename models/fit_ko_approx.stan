@@ -30,30 +30,62 @@ functions {
 }
 
 data {
-  int N;
-  int M;
-  real x[N];
+  int<lower=1> N;
+  real t[N];
   vector[N] y;
+  vector[N] yp;
+  vector[N] yd;
+  vector[N] ypd;
+}
+
+transformed data {
+  real ya[N];
+  real ypa[N];
+  int M = 10;
+  
+  for(n in 1 : N) {
+    ya[n] = y[n];
+    ypa[n] = yp[n];
+  }
 }
 
 parameters {
-  real<lower=0.0> l;
-  real<lower=0.0> alpha;
-  real<lower=0.0> sigma;
-  vector[M] zm;
+  real a;
+  real b;
+  real c;
+  real d;
+  real<lower=0> sigmayp;
+  real<lower=0> sigmaypp;
+  
+  vector<lower=0.0>[2] rho;
+  real<lower=0.0> alphayp;
+  real<lower=0.0> alphaypp;
+  
+  vector[M] etayp;
+  vector[M] etaypp;
 }
 
 transformed parameters {
-  vector[N] zh;
+  vector[N] ypm;
+  vector[N] yppm;
   
-  zh = approx_L(N, M, 1.0, x, alpha, l) * zm;
+  {
+    ypm = (approx_L(N, M, 1.0, ya, alphayp, rho[1]) .* approx_L(N, M, 1.0, ypa, alphayp, rho[2])) * etayp;
+    yppm = (approx_L(N, M, 1.0, ya, alphaypp, rho[1]) .* approx_L(N, M, 1.0, ypa, alphaypp, rho[2])) * etaypp;
+  }
 }
 
 model {
-  l ~ gamma(4.0, 4.0);
-  alpha ~ normal(0, 1.0);
+  rho ~ gamma(4.0, 4.0);
+  alphayp ~ normal(0, 1.0);
+  alphaypp ~ normal(0, 1.0);
+  sigmayp ~ normal(0, 1.0);
+  sigmaypp ~ normal(0, 1.0);
   
-  zm ~ normal(0.0, 1.0);
+  etayp ~ normal(0.0, 1.0);
+  etaypp ~ normal(0.0, 1.0);
   
-  y ~ normal(zh, sigma);
+  yd ~ normal(a * y + b * yp + ypm, sigmayp);
+  ypd ~ normal(c * y + d * yp + yppm, sigmaypp);
 }
+
