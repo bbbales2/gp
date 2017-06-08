@@ -131,9 +131,9 @@ df %>% ggplot(aes(time, y)) +
                yd = dft$yd,
                ypd = dft$ypd)
   
-  fit = stan("models/fit_gp.stan", data = sdata, chains = 4, cores = 4, iter = 1000)
+  fit_ko_hyp = stan("models/fit_gp.stan", data = sdata, chains = 4, cores = 4, iter = 1000)
   
-  s1 = as_tibble(extract(fit, c("a", "b", "c", "d", "alphayp", "alphaypp", "sigmayp", "sigmaypp")))
+  s1 = as_tibble(extract(fit_ko_hyp, c("a", "b", "c", "d", "alphayp", "alphaypp", "sigmayp", "sigmaypp")))
   
   s1 %>% filter(c < -5.0) %>% ggplot(aes(c)) +
     geom_histogram(fill = "red") +
@@ -247,15 +247,17 @@ sample_derivs = function(params, ynoise, ti) {
   out = mvrnorm(1, build_mu(K, KsK, ynoise), build_cov(K, KsK, KsKs))
   return(out)
 }
+
 {  
   #get all of our posterior samples as a list of vectors c(rho, alpha, sigma)
-  get_single_sample = function(i) c(rho = sy$rho[i], alpha = sy$alpha[i], sigma = sy$sigma[i])
+  get_single_sample = function(i) c(rho_y = sy$rho[i], alpha_y = sy$alpha[i], sigma_y = sy$sigma[i],
+                                    rho_yp = syp$rho[i], alpha_yp = syp$alpha[i], sigma_yp = syp$sigma[i])
   s_list = map(1:100, get_single_sample)
-  
+
   #for each posterior sample of c(rho, alpha, sigma) get a post. pred. sample of deriv. for both states
   sample_derivs_both_states <- function(params, ynoise, ypnoise, ti) {
-    return(list(yp_hat = sample_derivs(params, ynoise, ti),
-                ypp_hat = sample_derivs(params, ypnoise, ti)))
+    return(list(yp_hat = sample_derivs(params[1:3], ynoise, ti),
+                ypp_hat = sample_derivs(params[4:6], ypnoise, ti)))
   }
   post_draws <- mclapply(s_list, sample_derivs_both_states, ynoise = dft$ynoise, ypnoise = dft$ypnoise, ti = dft$time, mc.cores = 2)
   
@@ -330,6 +332,17 @@ sample_derivs = function(params, ynoise, ti) {
     geom_vline(xintercept = -9.8, col = "darkred") +
     labs(title = "Fit inputed derivatives using linear model + Kennedy O'Hagan + approx GP + estimate hyperparameters")
 }
+
+bind_rows(df_impute3 %>% sample_n(2000) %>% select(c) %>% mutate(name = "impute_ko_approx"),
+          df_impute2 %>% sample_n(2000) %>% select(c) %>% mutate(name = "impute_linear"),
+          as_tibble(extract(fit_ko_approx, c("c"))) %>% mutate(name = "fd_ko_approx"),
+          as_tibble(extract(fit_gp_fixed, c("c"))) %>% mutate(name = "fd_ko_fixed_hp"),
+          as_tibble(extract(fit_lode, c("c"))) %>% mutate(name = "ode_linear"),
+          as_tibble(extract(fit_fdfull, c("c"))) %>% mutate(name = "fd_full"),
+          as_tibble(extract(fit_fd, c("c"))) %>% mutate(name = "fd_linear")) %>% ggplot(aes(c)) +
+  geom_histogram(aes(y = ..density..)) +
+  geom_vline(xintercept = -9.8) +
+  facet_grid(name ~ .)
 
 s1$type = 'gp'
 df_fd$type = 'lr'

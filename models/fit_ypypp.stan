@@ -7,6 +7,7 @@ data {
   vector[N] ypph;
 }
 
+
 parameters {
   real a;
   real b;

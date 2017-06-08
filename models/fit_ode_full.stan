@@ -22,8 +22,8 @@ transformed data {
 
 parameters {
   real c;
-  #real<lower=0> sigmay;
-  #real<lower=0> sigmayp;
+  real<lower=0> sigmay;
+  real<lower=0> sigmayp;
 }
 
 transformed parameters {
