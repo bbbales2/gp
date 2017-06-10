@@ -1,6 +1,6 @@
 clear all; clc;
 
-sigma = 1.0;
+sigma = 0.25;
 l = 0.15;
 
 a = 1 / (4 * sigma^2);
@@ -17,7 +17,7 @@ N = 51;
 Q = zeros(N, M);
 Q2 = zeros(N, M);
 V = zeros(M, 1);
-x = linspace(-1, 1, N);%4 * (rand(N, 1) - 0.5)';
+x = linspace(-0.5, 0.5, N);%4 * (rand(N, 1) - 0.5)';
 
 tic
 figure(1);
