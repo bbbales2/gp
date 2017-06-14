@@ -64,7 +64,7 @@ transformed data {
 }
 
 parameters {
-  vector[N + 1] z;
+  vector[M] z;
   real<lower=0> sigmagp;
   real<lower=0> l;
   real<lower=0> sigma;
@@ -72,9 +72,9 @@ parameters {
 
 transformed parameters {
   real uh[1, N];
-  vector[N + 1] D;// = inv_logit(approx_L(M, scale, xD, sigmagp, l) * z);
+  vector[N + 1] D = exp(approx_L(M, scale, xD, sigmagp, l) * z);
   
-  {
+  /*{
     matrix[N + 1, N + 1] Sigma = cov_exp_quad(xD, sigmagp, l);
     matrix[N + 1, N + 1] L;
     
@@ -83,8 +83,8 @@ transformed parameters {
       
     L = cholesky_decompose(Sigma);
     
-    D = inv_logit(L * z);
-  }
+    D = exp(L * z);
+  }*/
 
   uh = integrate_ode_rk45(sho, u0, 0.0, ts, to_array_1d(D), x_r, x_i);
 }

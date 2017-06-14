@@ -17,7 +17,7 @@ x = seq(-0.5, 0.5, length = N + 2)[2 : (N + 1)]
 dx = x[[2]] - x[[1]]
 xD = c(-0.5, x) + dx / 2.0
 
-alpha = 5.0
+alpha = 1.0
 l = 0.5
 
 Sigma = matrix(0, nrow = N + 1, ncol = N + 1)
@@ -29,7 +29,7 @@ for(i in 1:(N + 1)) {
 
 inv_logit = function(x) { 1 / (1 + exp(-x)) }
 
-D = inv_logit(mvrnorm(1, rep(0, N + 1), Sigma))
+D = exp(mvrnorm(1, rep(0, N + 1), Sigma))
 plot(xD, D)
 
 #D = rep(1.0, N + 1)#c(x, x[[N]] + dx) - dx / 2.0
@@ -53,20 +53,22 @@ u0 = rep(0, N)
 fout = inner_join(as_tibble(ode(y = u0, times = times, func = func, parms = D)[,]) %>%
                     gather(xi, u, 2:(N + 1)) %>%
                     mutate(xi = as.integer(xi)) %>%
-                    mutate(u = u + rnorm(n(), sd = 0.05)),
+                    mutate(unoise = u + rnorm(n(), sd = 0.05)),
   as_tibble(list(xi = 1:N, x = x)),
   by = "xi"
 )
 
-fout %>% ggplot(aes(x, u)) +
-  geom_line(aes(group = time, color = time))
+fout %>% filter(time == 0.1) %>%
+  gather(name, u, c(u, unoise)) %>%
+  ggplot(aes(x, u)) +
+  geom_line(aes(group = name, color = name))
 
 sdata = list(N = N,
-             M = 10,
+             M = 5,
              t = 0.1,
              scale = 0.25,
              u0 = u0,
-             u = (fout %>% filter(time == 0.1))$u,
+             u = (fout %>% filter(time == 0.1))$unoise,
              xD = xD)
 
 fit = stan("models/diffusion_gp.stan", data = sdata, chains = 1, iter = 1000)

@@ -1,7 +1,7 @@
 clear all; clc;
 
-sigma = 0.25;
-l = 0.20;
+sigma = 0.1;
+l = 0.59;
 
 a = 1 / (4 * sigma^2);
 b = 1 / (2 * l^2);
