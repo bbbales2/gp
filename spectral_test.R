@@ -3,9 +3,8 @@ library(rstan)
 library(ggplot2)
 library(tictoc)
 
-bH = function(x, M, l) {
-  sigma = 2.0
-  a = 1 / (4 * sigma^2)
+bH = function(M, scale, x, sigma, l) {
+  a = 1 / (4 * scale^2)
   b = 1 / (2 * l^2)
   c = sqrt(a^2 + 2 * a * b)
   
@@ -24,7 +23,7 @@ bH = function(x, M, l) {
     Ht[, n] = f * sqrt(1 / (2 * (n - 1))) * 2 * xp * Ht[, n - 1] - f^2 * sqrt(1 / (4 * (n - 1) * (n - 2))) * 2 * (n - 2) * Ht[, n - 2]
   }
   
-  Ht
+  sigma * Ht
 }
 
 bL = function(x, l) {
