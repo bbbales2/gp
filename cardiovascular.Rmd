@@ -1,0 +1,131 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+
+get_patient_numerics <- function(file_str) {
+  raw_table <- system(paste0("rdsamp -r mimic3wdb/matched/", file_str," -v -p -c -t 1000"), intern = TRUE) %>%
+    str_replace_all("-", "")
+  
+  units_strs <- str_split(s[2], ",") %>% unlist %>% str_replace_all("'", "") %>% paste(sep = "(")
+  col_names <- str_split(s[1], ",") %>% unlist %>% str_replace_all("'", "") %>% 
+    paste(units_strs, sep = "(") %>% paste(")", sep = "") %>% str_replace_all("[() % ?]", "_") %>% str_replace_all("___", "")
+  
+  raw_table %>% paste(collapse = "\n") %>% read_csv(skip = 2, col_names = col_names)
+}
+
+s <- system("rdsamp -r mimic3wdb/matched/s01200/s01200-2120-07-15-22-37n -v -p -c -t 1000", intern = TRUE) %>%
+  str_replace_all("-", "")
+units_strs <- str_split(s[2], ",") %>% unlist %>% str_replace_all("'", "") %>% paste(sep = "(")
+col_names <- str_split(s[1], ",") %>% unlist %>% str_replace_all("'", "") %>% paste(units_strs, sep = "(") %>% paste(")", sep = "") %>% str_replace_all("[() % ?]", "_") %>% str_replace_all("___", "")
+
+ts01200 <- s %>% paste(collapse = "\n") %>% read_csv(skip = 2, col_names = col_names)
+
+ts01200 %>% ggplot(aes(`Elapsed time(seconds)`, `HR(bpm)`)) + geom_line()
+
+ts01200[500:1000,] %>% mutate(r = `RESP(pm)` + 60) %>% select(-`PVC Rate per Minute(pm)`, -`Rhythm Status(?)`, -`Ectopic Status(?)`, -`Ectopic Count(?)`, -`SpO2(%)`, -`NBP Dias(mmHg)`) %>% gather(vital_sign, value, -`Elapsed time(seconds)`, -`NBP Sys(mmHg)`, -`PULSE(bpm)`) %>% ggplot(aes(`Elapsed time(seconds)`, value, group = vital_sign, color = vital_sign)) + geom_point() + geom_line()
+```
+
+```{r}
+ts01200r <- ts01200[500:1000,] %>% select(`RESP(pm)`, `HR(bpm)`)
+```
+
+
+```{r}
+cardiovascular <- function(t, state, parameters) {
+  with(as.list(c(state, parameters)),{
+    
+    r1 <- A1*sin(2*pi*fr*tau*(t-1) - phi)
+    r2 <- A2*sin(2*pi*fr*tau*t - phi)
+    
+    g <- function(p) 1/(1 + p^n)
+    
+    if(t < 3) p1 <- 1
+    else p1 <- pastvalue(t - 3)[2]
+    
+    g1 <- g(p1 + r1)
+    g2 <- 1 - g(p + r2)
+    
+    # rate of change
+    dh <- ((beta*g1)/(1+gamma*g2) - nu*g2 + delta*(1-h))/epsh
+    dp <- (mu*h - p/(1+alpha*g1))/epsp
+
+    # return the rate of change
+    list(c(dh, dp))
+  })
+}
+
+parameters <- c(epsh = 3, epsp = 1, alpha = 15, beta = 10,
+                gamma = 0.2, mu = 0.18, nu = 9.63, n = 8, A1 = 0, phi = pi, tau = 3,
+                fr = 6, A2 = 0.005, delta = 0.85, initial = c(0.66, 1))
+
+initial_state <- c(h = 0.66, p = 1)
+dt <- 0.1
+times <- seq(0, 50, by = dt)
+
+df <- dde(y = initial_state, times = times, func = cardiovascular, parms = parameters) %>%
+  as.data.frame %>% as_tibble
+
+df %>% ggplot(aes(time, h)) + geom_line()
+```
+
+
+
+```{r}
+r1 <- A1*sin(2*pi*fr*tau*(t-1) - phi)
+r2 <- function(A2, fr, tau, phi, t) A2*sin(2*pi*fr*tau*t - phi)
+r2_ <- function(t) r2(A2 = 0.005, fr = 6, tau = 3, phi = pi, t = t)
+
+tibble(t = c(0,250)) %>% ggplot(aes(t)) + stat_function(fun = r2_, geom = "line")
+tibble(t = seq(0, 1, by = 0.1)) %>% mutate(r2 = sin(2*pi**t)) %>% ggplot(aes(t, r2)) + geom_line()
+```
+
+
+```{r}
+library(deSolve)
+
+cardiovascular <- function(t, state, parameters) {
+  with(as.list(c(state, parameters)),{
+    
+    #mu <- 3/(2+alpha)
+    #nu <- 2*beta/(2+gamma) + 2*delta/3
+    
+    r1 <- A1*sin(2*pi*fr*tau*(t-1) - phi)
+    r2 <- A2*sin(2*pi*fr*tau*t - phi)
+    
+    g <- function(p) 1/(1 + p^n)
+    p1 <- p*(t-1)
+    g1 <- g(p1 + r1)
+    g2 <- 1 - g(p + r2)
+    
+    # rate of change
+    dh <- ((beta*g1)/(1+gamma*g2) - nu*g2 + delta*(1-h))/epsh
+    dp <- (mu*h - p/(1+alpha*g1))/epsp
+
+    # return the rate of change
+    list(c(dh, dp))
+  })
+}
+
+parameters <- c(epsh = 3, epsp = 1, alpha = 15, beta = 10,
+                gamma = 0.2, mu = 0.18, nu = 9.63, n = 8, A1 = 0, phi = pi, tau = 3,
+                fr = 6, A2 = 0.005, delta = 0.85)
+
+initial_state <- c(h = 0.66, p = 1)
+dt <- 0.1
+times <- seq(0, 250, by = dt)
+
+df <- ode(y = initial_state, times = times, func = cardiovascular, parms = parameters, method = "") %>%
+  as.data.frame %>% as_tibble
+
+df <- ode45(y = initial_state, times = times, func = cardiovascular, parms = parameters, atol = 1e-12) %>%
+  as.data.frame %>% as_tibble
+  
+```
+
+```{r}
+df %>% ggplot(aes(time, p)) + geom_line()
+```
+
