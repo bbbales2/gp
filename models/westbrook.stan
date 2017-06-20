@@ -45,7 +45,7 @@ parameters {
 }
 
 transformed parameters {
-  vector[N] f = inv_logit(1.0 + approx_L(M, scale, x, sigma, l) * z);
+  vector[N] f = inv_logit(approx_L(M, scale, x, sigma, l) * z);
 }
 
 model {
