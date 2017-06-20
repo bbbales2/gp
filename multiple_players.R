@@ -21,7 +21,8 @@ df2 = df %>% mutate(gtime = 48 - remaining_minutes,
                     x = -(remaining_minutes - 24) / 48.0,
                     y = resultBin) %>%
   group_by(name) %>%
-  sample_n(N) %>%
+  slice(1:N) %>%
+  #sample_n(N) %>%
   ungroup() %>%
   arrange(name) %>%
   select(gtime, x, y, name)
@@ -55,8 +56,47 @@ get_lines = function(fit, vnames, n = 100) {
   }
   out %>% mutate(itime = as.double(itime))
 }
+get_linest = function(fit, vnames, n = 100) {
+  a = extract(fit, vnames)
+  idxs = sample(nrow(a[[vnames[[1]]]]), n)
+  
+  out = as_tibble()
+    for(i in 1:length(vnames)) {
+      vname = vnames[[i]];
+      d = a[[vname]][idxs,]
+      colnames(d) <- (1:dim(a[[vnames[[1]]]])[[2]])
+      d = as_tibble(d) %>% gather(itime, data)
+      d$name = vname
+      
+      out = bind_rows(out, d)
+    }
+  out %>% mutate(itime = as.double(itime))
+}
 
-a = get_lines(fit, c("f"), 500) %>% rename(f = data)
+a = get_linest(fit, c("mu"), 500) %>% rename(f = data)
+b = as_tibble(list(itime = 1:nrow(df2), time = df2$gtime))
+out = inner_join(a, b, by = "itime")
+
+summaryt = out %>% group_by(itime) %>%
+  summarize(time = mean(time),
+            mean = mean(f),
+            m = mean - 2 * sd(f),
+            p = mean + 2 * sd(f)) %>%
+  ungroup()
+
+summaryt %>% ggplot(aes(time, mean)) +
+  geom_ribbon(aes(ymin = m, ymax = p), alpha = 0.1) +
+  geom_line() +
+  #geom_point(aes(group = name), size = 0.01, shape = "d") +
+  geom_line(aes(time, p), alpha = 1.0, linetype = 'dashed') +
+  geom_line(aes(time, m), alpha = 1.0, linetype = 'dashed') +
+  #geom_point(data = out2, aes(time, f), size = 0.1, alpha = 0.01) +
+  xlab("Game time") +
+  ylab("Shooting percentage") +
+  ggtitle("Non-Hierarchical shooting percentage (w/ est. 95% conf. intervals)") +
+  guides(color = FALSE)
+
+a = get_lines(fit, c("q"), 500) %>% rename(f = data)
 b = as_tibble(list(itime = 1:nrow(df2), time = df2$gtime))
 out = inner_join(a, b, by = "itime")
 
@@ -68,13 +108,16 @@ summary = out %>% group_by(itime, name) %>%
   ungroup()
 
 summary %>% ggplot(aes(time, mean)) +
-  #geom_ribbon(aes(ymin = m, ymax = p), alpha = 0.25) +
+  geom_ribbon(aes(ymin = m, ymax = p), alpha = 0.1) +
   geom_line(aes(group = name, color = name)) +
-  geom_line(aes(time, p, group = name, color = name), alpha = 0.5, linetype = 'dashed') +
-  geom_line(aes(time, m, group = name, color = name), alpha = 0.5, linetype = 'dashed') +
+  #geom_point(aes(group = name), size = 0.01, shape = "d") +
+  geom_line(aes(time, p, group = name, color = name), alpha = 1.0, linetype = 'dashed') +
+  geom_line(aes(time, m, group = name, color = name), alpha = 1.0, linetype = 'dashed') +
   #geom_point(data = out2, aes(time, f), size = 0.1, alpha = 0.01) +
   xlab("Game time") +
   ylab("Shooting percentage") +
-  ggtitle("Hierarchical shooting percentage (w/ est. 95% conf. intervals)")
+  ggtitle("Non-Hierarchical shooting percentage (w/ est. 95% conf. intervals)") +
+  facet_grid(. ~ name) +
+  guides(color = FALSE)
 
 summary %>% arrange(time) %>% slice(c(1, n()))

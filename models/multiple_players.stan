@@ -43,30 +43,54 @@ parameters {
   vector[M] zt;
   real<lower = 0.0> sigmat;
   real<lower = 0.0> lt;
+  
   vector[M] z[L];
   real<lower = 0.0> sigma[L];
   real<lower = 0.0> l[L];
 }
 
 transformed parameters {
-  vector[N] f[L];
+  vector[N] q[L];
   vector[N * L] mu = approx_L(M, scale, x, sigmat, lt) * zt;
-  for(ll in 1:L) {
-    f[ll] = inv_logit(mu[(ll - 1) * N + 1 : ll * N] + approx_L(M, scale, x[(ll - 1) * N + 1 : ll * N], sigma[ll], l[ll]) * z[ll]);
+  
+  {
+    int i = 0;
+    
+    for(ll in 1:L) {
+      q[ll] = approx_L(M, scale, x[i + 1: i + N], sigma[ll], l[ll]) * z[ll];
+    
+      i = i + N;
+    }
   }
 }
 
 model {
-  lt ~ gamma(4, 4);
+  int i = 0;
+  
   zt ~ normal(0, 1);
+  lt ~ gamma(4, 4);
   sigmat ~ normal(0, 1);
+  
   for(ll in 1:L) {
     z[ll] ~ normal(0, 1);
-    sigma[ll] ~ normal(0, 1);
     l[ll] ~ gamma(4, 4);
+    sigma[ll] ~ normal(0, 1);
   }
   
   for(ll in 1:L) {
-    y[(ll - 1) * N + 1 : ll * N] ~ bernoulli(f[ll]);
+    y[i + 1 : i + N] ~ bernoulli_logit(mu[i + 1 : i + N] + q[ll]);
+    
+    i = i + N;
+  }
+}
+
+generated quantities {
+  vector[N] f[L];
+  int i = 0;
+  
+  for(ll in 1:L) {
+    f[ll] = inv_logit(mu[i + 1 : i + N] + q[ll]);
+    
+    i = i + N;
   }
 }

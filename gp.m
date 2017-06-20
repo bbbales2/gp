@@ -1,7 +1,7 @@
 clear all; clc;
 
-sigma = 0.25;
-l = 0.15;
+sigma = 1.0;
+l = 1.0;
 
 a = 1 / (4 * sigma^2);
 b = 1 / (2 * l^2);
@@ -13,11 +13,11 @@ beta = (1 + (2 * epsilon / alpha)^2)^0.25;
 delta = sqrt(alpha^2 * (beta^2 - 1) / 2);
 
 M = 10;
-N = 51;
+N = 50;
 Q = zeros(N, M);
 Q2 = zeros(N, M);
 V = zeros(M, 1);
-x = linspace(-0.5, 0.5, N);%4 * (rand(N, 1) - 0.5)';
+x = linspace(-1.0, 1.0, N);%4 * (rand(N, 1) - 0.5)';
 
 tic
 figure(1);
@@ -84,12 +84,12 @@ subplot(2, 2, 2);
 imshow(K);
 
 subplot(2, 2, 3);
-imshow(log(abs(K - Ktt) + 1e-16), []);
+imshow(log10(abs(K - Ktt) + 1e-16), []);
 colorbar();
 title('Error in approx');
 
 subplot(2, 2, 4);
-imshow(log(abs(K - Kt) + 1e-16), []);
+imshow(log10(abs(K - Kt) + 1e-16), []);
 colorbar();
 title('Error in approx');
 
