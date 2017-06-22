@@ -1,0 +1,131 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Simulate System
+
+```{r}
+library(tidyverse)
+library(deSolve)
+
+Lorenz <- function(t, state, parameters) {
+  with(as.list(c(state, parameters)),{
+    # rate of change
+    dx <- sigma*(y-x)
+    dy <- x*(rho-z) - y
+    dz <- x*y - beta*z
+
+    # return the rate of change
+    list(c(dx, dy, dz))
+  })
+}
+  
+#simulate Lorenz oscillator from time=1 to 1, and also get finite different deriv. approx.
+parameters <- c(sigma = 10, beta = 8/3, rho = 28)
+initial_state <- c(x = -8, y = 7, z = 27)
+sim_lorenz_0_1 <- function(time_step) {
+  ode(y = initial_state, times = seq(0, 1, by = time_step), func = Lorenz, parms = parameters) %>%
+    as.data.frame %>% as_tibble %>%
+    mutate(dzdt = (z - lag(z))/time_step) %>%
+    mutate(centered_time = lag(time) + time_step/2)
+}
+
+#simulate for different time steps
+time_step_sizes <- c(0.4, 0.2, 0.1, 0.05, 0.025)
+lorenz_df <- lapply(time_step_sizes, sim_lorenz_0_1)
+
+df_1000 <- sim_lorenz_0_1(0.00001)
+
+#plot trajectories
+state_z_0_1_1000 <- df_1000 %>% ggplot(aes(time, z)) + geom_line()
+state_z_0_1_1000 + geom_line(aes(time, z), color = "red", data=df_10) + geom_point(aes(time, z), color = "red", data=lorenz_df[[1]])
+state_z_0_1_1000 + geom_line(aes(time, z), color = "red", data=df_20) + geom_point(aes(time, z), color = "red", data=lorenz_df[[2]])
+state_z_0_1_1000 + geom_line(aes(time, z), color = "red", data=df_40) + geom_point(aes(time, z), color = "red", data=lorenz_df[[3]])
+state_z_0_1_1000 + geom_line(aes(time, z), color = "red", data=df_80) + geom_point(aes(time, z), color = "red", data=lorenz_df[[4]])
+state_z_0_1_1000 + geom_line(aes(time, z), color = "red", data=df_160) + geom_point(aes(time, z), color = "red", data=lorenz_df[[5]])
+```
+
+Get Hyperparameter Posterior Draws
+
+```{r, message = FALSE}
+library(rstan)
+ 
+#we have to precompile the stan model file other in the lapply it will recompile for every fit
+stan_model_file <- stan_model("models/fit_hyperparameters_no_noise.stan")
+
+#take in a df from a solved Lorenz system and return a list of hyperparam draws
+get_hyperparam_draws <- function(df, n_draws, matrix_regularizer) {
+  dat <- list(N = nrow(df), t = df$time, y = df$z, matrix_regularizer = matrix_regularizer)
+  fit <- sampling(stan_model_file, data = dat, chains = 1, iter = 1000 + n_draws, cores = 1)
+  s <- extract(fit, pars = c("rho", "alpha"))
+  get_single_sample <- function(i) c(rho = s$rho[i], alpha = s$alpha[i])
+  s_list <- map(1:n_draws, get_single_sample)
+  
+  s_list
+}
+
+hyperparam_draws <- lapply(lorenz_df, get_hyperparam_draws, n_draws = 100, matrix_regularizer = 1e-6)
+```
+
+Get Posterior Derivative Draws
+
+```{r}
+library(MASS)
+library(parallel)
+source("derivative_kernels.R")
+
+# function that takes in trajector y and returns a draw from the posterior of dy/dt
+# at the specific time points tis
+sample_derivs <- function(params, y, ti, tis) {
+  l <- params[1]
+  a <- params[2]
+  N = length(y)
+  Ns <- length(tis)
+  
+  #use outer to create kernel evaluated at all combinations of time points.
+  #the original kernel function take in two time poitns AND an l so we use
+  #kern_fixed_l to make versions of the kernel function w/ a fixed l
+  kern_fixed_l <- function(kern, l) {function(tj, tk) kern(tj, tk, l)} 
+  K <- a^2 * outer(ti, ti, FUN = kern_fixed_l(QQ, l))    #cov between old points and old points
+  KsK <- a^2 * outer(tis, ti, FUN = kern_fixed_l(RQ, l))  #old points and new points
+  KsKs <- a^2 * outer(tis, tis, FUN = kern_fixed_l(RR, l)) #new points and new points
+  
+  build_mu = function(K, KsK, y) {
+    diag(K) = diag(K) + 1e-6
+    KsK %*% solve(K, y)
+  }
+  
+  build_cov = function(K, KsK, KsKs) {
+    KKs = t(KsK)
+    diag(K) = diag(K) + 1e-6
+    KsKs - KsK %*% solve(K, KKs) + diag(1e-6, Ns, Ns)
+  }
+  
+  out = mvrnorm(1, build_mu(K, KsK, y), build_cov(K, KsK, KsKs))
+  return(out)
+}
+
+#example of using function
+sample_derivs(params = hyperparam_draws[[1]][[1]], y = lorenz_df[[1]]$z, ti = lorenz_df[[1]]$time, tis = seq(0, 1, by = 0.01))
+
+# draw from the posterior of dy/dt given a hyperparm
+draw_post_deriv_samples <- function(hyper_params, soln_df, tis) {
+  deriv_draws_list <- lapply(hyper_params, sample_derivs, y = soln_df$z, ti = soln_df$time, tis = tis)
+  names(deriv_draws_list) <- paste0("Draw", 1:length(hyper_params))
+  
+  deriv_draws_list %>% as_tibble %>% mutate(time = tis) %>% gather(sample, value, -time)
+}
+
+t <- draw_post_deriv_samples(hyperparam_draws[[2]], lorenz_df[[2]], tis = seq(0, 1, by = 0.01))
+
+lorenz_df[[1]] %>% ggplot(aes(centered_time, dzdt)) + geom_point(color = "red") + geom_line(aes(time, value, group = sample), alpha = 0.05, data = t) + geom_line(aes(centered_time, dzdt),data = df_1000, color = "green")
+```
+
+Try doing lm ala UW paper.
+
+```{r}
+df %>% ggplot(aes(time, z)) + geom_line() + geom_point()
+X <- model.matrix(dzdt ~ .^3, data = select(df, -time, -dxdt, -dydt))
+lm(dzdt ~ ., data = mutate(as_tibble(X), dzdt = df$dzdt[2:(nrow(X)+1)]))
+```

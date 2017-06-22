@@ -6,7 +6,6 @@ data {
 
 parameters {
   vector[N] z;
-  real a;
   real<lower = 0.0> sigma;
   real<lower = 0.0> l;
 }
@@ -22,14 +21,13 @@ transformed parameters {
       Sigma[n, n] = Sigma[n, n] + 1e-12;
       
     L = cholesky_decompose(Sigma);
-    f = inv_logit(a + L * z);
+    f = inv_logit(L * z);
   }
 }
 
 model {
   l ~ gamma(4, 4);
   z ~ normal(0, 1);
-  a ~ normal(0, 1);
   sigma ~ normal(0, 1);
   
   y ~ bernoulli(f);

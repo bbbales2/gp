@@ -4,6 +4,25 @@ output: html_notebook
 ---
 
 $$
+\mathrm{Cov}(y_i, y_j) = K(t_i, t_j) = \alpha^2 \exp\left( - \frac{(t_i - t_j)^2}{2l^2} \right)
+$$
+
+$$
+\begin{eqnarray}
+\mathrm{Cov}(y_i, (y_{j+h} - y_j)/h) &=& \mathrm{Cov}(y_i, y_{j+h}/h) - \mathrm{Cov}(y_i, y_j/h)\nonumber\\
+&=& \frac{\mathrm{Cov}(y_i, y_{j+h}) - \mathrm{Cov}(y_i, y_j)}{h} \nonumber\\
+&=& \frac{K(t_i, t_{j+h}) - K(t_i, t_j)}{h} \nonumber\\
+&\to_{h \to 0}& \frac{\partial}{\partial t_j} K(t_i, t_j) \nonumber\\
+\end{eqnarray}
+$$
+
+$$
+\begin{eqnarray}
+\frac{\partial}{\partial t_j} K(t_i, t_j) &=& \alpha^2 \frac{(t_i-t_j)}{l^2} \exp\left(- \frac{(t_i - t_j)^2}{2l^2} \right)  \nonumber\\
+\end{eqnarray}
+$$
+
+$$
 \begin{pmatrix}
 y\\
 y'\\
