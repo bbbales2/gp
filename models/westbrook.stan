@@ -38,6 +38,10 @@ data {
   real scale;
 }
 
+transformed data {
+ # real sigma = 1.0;
+}
+
 parameters {
   vector[M] z;
   real<lower = 0.0> sigma;
@@ -45,31 +49,25 @@ parameters {
 }
 
 transformed parameters {
-  vector[N] f = inv_logit(1.0 + approx_L(M, scale, x, sigma, l) * z);
+  vector[N] q = approx_L(M, scale, x, sigma, l) * z;
 }
 
 model {
   l ~ gamma(4, 4);
-  z ~ normal(0, 1);
+  z[1] ~ normal(0.0, 0.01);
+  z[2:M] ~ normal(0, 1);
   sigma ~ normal(0, 1);
   
-  y ~ bernoulli(f);
+  y ~ bernoulli_logit(q);
 }
 
 generated quantities {
+  #vector[N] f;
   real error = -20;
-  
   {
     matrix[N, M] L = approx_L(M, scale, x, sigma, l);
-    #matrix[N, N] E = cov_exp_quad(x, sigma, l) - L * L';
     
-    #for(i in 1:N) {
-    #  for(j in 1:N) {
-    #    real error2 = log10(fabs(E[i, j]) + 1e-20);
-    #    if(error < error2)
-    #      error = error2;
-    #  }
-    #}
+    #f = inv_logit(L * z);
     
     error = log10(max(fabs(cov_exp_quad(x, sigma, l) - L * L')) + 1e-20);
   }

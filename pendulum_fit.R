@@ -30,8 +30,8 @@ lout = as_tibble(ode(y = y0, times = times, func = linearized, parms = c(gl = gl
 
 df = bind_rows(lout %>% mutate(type = "linearized"), fout %>% mutate(type = "full")) %>% mutate(type = factor(type))
 
-df = df %>% mutate(ynoise = y + rnorm(nrow(df), mean = 0.0, sd = 0.01)) %>%
-  mutate(ypnoise = yp + rnorm(nrow(df), mean = 0.0, sd = 0.01))
+df = df %>% mutate(ynoise = y + rnorm(nrow(df), mean = 0.0, sd = 0.1)) %>%
+  mutate(ypnoise = yp + rnorm(nrow(df), mean = 0.0, sd = 0.1))
 
 dft = df %>% filter(type == "full") %>%
   mutate(yd = (lead(y) - lag(y)) / (2.0 * h)) %>%

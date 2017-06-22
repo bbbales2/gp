@@ -16,7 +16,7 @@ df = df0 %>% select(time = GAME_CLOCK, period = PERIOD, result = SHOT_RESULT, na
 df2 = df %>% mutate(gtime = 48 - remaining_minutes,
                     x = -(remaining_minutes - 24) / 48.0,
                     y = resultBin) %>%
-  select(gtime, period, x, y, result)
+  select(gtime, period, x, y, result) %>% sample_n(100)
 
 sdata = list(N = dim(df2)[[1]],
              M = 10,
@@ -24,7 +24,15 @@ sdata = list(N = dim(df2)[[1]],
              x = df2$x,
              y = df2$y)
 
-fit = stan('~/gp/models/westbrook.stan', data = sdata, chains = 4, cores = 4, iter = 2000)
+N = dim(df2)[[1]]
+M = 10
+scale = 0.25
+x = df2$x
+y = df2$y
+
+stan_rdump(c('N', 'M', 'scale', 'x', 'y'), file = '~/gp/sdata.dat')
+
+fit = stan('~/gp/models/westbrook.stan', data = sdata, chains = 1, cores = 1, iter = 2000)
 
 launch_shinystan(fit)
 
