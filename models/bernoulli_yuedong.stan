@@ -49,10 +49,14 @@ transformed data {
 parameters {
   real a;
   real b;
-  
-  vector[N] z;
   real<lower=0.0> alpha;
   real<lower=0.0> sigma;
+  
+  vector[N] z;
+}
+
+transformed parameters {
+  vector[N] c = alpha * L * z;
 }
 
 model {
@@ -62,15 +66,15 @@ model {
   alpha ~ normal(0, 1);
   sigma ~ normal(0, 1);
   
-  //y ~ multi_normal_cholesky(a * vk0 + b * vk1, alpha * L);
-  y ~ normal(a * vk0 + b * vk1 + alpha * L * z, sigma);
+  y ~ normal(a * vk0 + b * vk1 + c, sigma);
 }
 
 generated quantities {
-  vector[N] yhat;# = multi_normal_rng(a * vk0 + b * vk1, sigma * sigma * L * L');
+  vector[N] yhat;
+  vector[N] f = a * vk0 + b * vk1;
   
   {
-    vector[N] mu = a * vk0 + b * vk1 + alpha * L * z;
+    vector[N] mu = f + c;
     for(n in 1:N)
       yhat[n] = normal_rng(mu[n], sigma);
   }
