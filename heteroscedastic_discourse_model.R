@@ -3,10 +3,12 @@ library(reshape2)
 library(tidyverse)
 library(ggplot2)
 library(rstan)
+library(shinystan)
+library(bayesplot)
 
 df_long_trim = readRDS("fake_data_proposal.rds")
 (df_long_trim %>%
-    filter(condition == "condition1", id == 1) %>%
+    filter(condition == "condition2", id == 1) %>%
     select(-condition, -id, -coordinate) %>%
     rename(x = time, y = position) %>%
     spread(trial, y) -> data) %>%
@@ -31,3 +33,5 @@ extract(fit, c("mu", "sigma")) %>% melt %>% as.tibble %>%
   ggplot(aes(x, v)) +
   geom_line(aes(group = sample), alpha = 0.2) +
   facet_grid(. ~ variable)
+
+mcmc_pairs(extract(fit, permute = FALSE), c("l", "sigmaf"))
