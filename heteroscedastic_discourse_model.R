@@ -16,10 +16,10 @@ df_long_trim = readRDS("fake_data_proposal.rds")
   ggplot(aes(x, y)) +
   geom_line(aes(group = trial), alpha = 0.2)
 
-(fit = stan("models/heteroscedastic.stan", data = list(N = nrow(data),
-                                                       y = data %>% select(-x) %>% as.matrix,
-                                                       x = data %>% pull(x),
-                                                       M = ncol(data) - 1), cores = 4, iter = 1000))
+(fit = stan("models/heteroscedastic_centered.stan", data = list(N = nrow(data),
+                                                                y = data %>% select(-x) %>% as.matrix,
+                                                                x = data %>% pull(x),
+                                                                M = ncol(data) - 1), cores = 4, iter = 1000))
 
 extract(fit, c("mu", "sigma")) %>% melt %>% dim
 
@@ -33,5 +33,7 @@ extract(fit, c("mu", "sigma")) %>% melt %>% as.tibble %>%
   ggplot(aes(x, v)) +
   geom_line(aes(group = sample), alpha = 0.2) +
   facet_grid(. ~ variable)
+
+launch_shinystan(fit)
 
 mcmc_pairs(extract(fit, permute = FALSE), c("l", "sigmaf"))
