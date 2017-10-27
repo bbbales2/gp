@@ -1,5 +1,5 @@
 functions {
-  matrix approx_L(real l, real[] lp, matrix[] Ls, matrix[] dLdls);
+  vector approx_Lz(real l, real[] lp, matrix[] Ls, matrix[] dLdls, vector z);
 }
 
 
@@ -21,7 +21,7 @@ parameters {
 
 model {
   vector[N] f;
-  f = approx_L(l, lp, Ls, dLdls) * z;
+  f = approx_Lz(l, lp, Ls, dLdls, z);
   
   z ~ normal(0, 1);
   l ~ gamma(4.0, 4.0);

@@ -6,7 +6,7 @@ library(shinystan)
 
 sourceCpp("covariance.cpp")
 
-N = 50
+N = 150
 x = seq(0.0, 10.0, length = N)
 y = sin(x) + rnorm(N, 0.0, 0.2)
 P = 10
@@ -27,8 +27,8 @@ list(x = x, y = y) %>%
 
 cpp_src = stanc("models/cubic_interpolated_gp.stan", allow_undefined = TRUE)$cppcode
 cpp_src_split = strsplit(cpp_src, "\n")[[1]]
-first_match = grep("approx_L", cpp_src_split)[[1]]
-cat(cpp_src_split[(first_match - 2) : (first_match + 3)], sep = "\n")
+first_match = grep("approx_Lz", cpp_src_split)[[1]]
+cat(cpp_src_split[(first_match - 2) : (first_match + 4)], sep = "\n")
 
 model = stan_model("models/cubic_interpolated_gp.stan",
                    allow_undefined = TRUE,
