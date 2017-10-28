@@ -57,9 +57,6 @@ approx_Lz(const T0__& l,
   double t = (value_of(l) - x1) / (x2 - x1);
   double dtdl = 1 / (x2 - x1);
   
-  //std::cout << lidx << std::endl;
-  //std::cout << stan::math::value_of(alpha) << std::endl;
-  
   const Eigen::MatrixXd &y1 = Ls[lidx];
   const Eigen::MatrixXd &y2 = Ls[lidx + 1];
   
