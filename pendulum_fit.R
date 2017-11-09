@@ -7,6 +7,7 @@ library(deSolve)
 library(GGally)
 library(purrr)
 library(parallel)
+library(assist)
 
 setwd("~/gp")
 
@@ -42,6 +43,11 @@ df %>% ggplot(aes(time, y)) +
   geom_line(aes(colour = type)) +
   geom_point(aes(time, ynoise, colour = type), size = 0.5)
 
+fit = ssr(ypd ~ y, rk = linear(yp), scale = cbind(1, dft$yp), data = dft)
+summary(fit)
+as.tibble(list(predict = predict(fit)$fit, reference = dft$ypd, t = dft$time)) %>%
+  gather(which, value, c(predict, reference)) %>% ggplot(aes(t, value)) +
+  geom_jitter(aes(color = which, shape = which))
 
 # Fit data using finite difference derivative approximations and linear system
 {
@@ -175,7 +181,7 @@ df %>% ggplot(aes(time, y)) +
                alphaypp = 0.25,
                rho = 2.0)
   
-  fit_gp_fixed = stan("models/fit_gp_fixed_hyperparam.stan", data = sdata, chains = 4, cores = 4, iter = 1000)
+  fit_gp_fixed = stan("models/fit_gp_fixed_hyperparam.stan", data = sdata, chains = 4, cores = 4, iter = 2000)
   
   s1 = as_tibble(extract(fit_gp_fixed, c("a", "b", "c", "d")))
   

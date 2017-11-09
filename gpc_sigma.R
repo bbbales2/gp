@@ -8,7 +8,7 @@ sourceCpp("covariance.cpp")
 
 M = 11 # Order of GPC expansion
 K = 15 # Order of polynomial expansions for integration
-k = 1.0
+k = 2.0
 alpha = k - 1.0
 
 x = seq(0.0, 1.0, length = 3)
