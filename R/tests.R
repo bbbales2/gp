@@ -1,59 +1,99 @@
 library(tidyverse)
 library(rstan)
 
-# simulate function
-expt_synth <- tibble(t = seq(-2,2,0.04)) %>% mutate(f = exp(t) + rnorm(nrow(.),sd = 0.05))
+# simulate expt and x^2
+expt_synth <- tibble(t = seq(-2,2,0.2)) %>% mutate(f = exp(t) + rnorm(nrow(.),sd = 0.05))
 expt_synth %>% ggplot(aes(t,f)) + geom_point()
 
-# draw from a GP
-gp_synth <- tibble(t = seq(-2,2,0.02))
-K <- QQ(gp_synth$t, gp_synth$t, list(1,2))
-gp_synth <- gp_synth %>% mutate(f = mvrnorm(1,mu = rep(0,nrow(gp_synth)),Sigma = K))# + rnorm(nrow(.),sd = 0.05))
-gp_synth %>% ggplot(aes(t,f)) + geom_line()
+tsq_synth <- tibble(t = seq(-2,2,0.2)) %>% mutate(f = (1/2)*t^2 + rnorm(nrow(.),sd = 0.05))
+tsq_synth %>% ggplot(aes(t,f)) + geom_point()
+
 
 # estimate hyperparameters
-fit <- stan("stan/fit_hyperparameters.stan",
-     data = list(N = nrow(expt_synth), t = expt_synth %>% pull(t), y = expt_synth %>% pull(f)),
+fit_expt <- stan("stan/fit_hyperparameters.stan",
+     data = list(N = nrow(expt_synth), t = expt_synth$t, y = expt_synth$f),
      chains = 1, iter = 1000)
 
-fit <- stan("stan/fit_hyperparameters.stan",
-            data = list(N = nrow(gp_synth), t = gp_synth %>% pull(t), y = gp_synth %>% pull(f)),
-            chains = 1, iter = 1000)
+fit_tsq <- stan("stan/fit_hyperparameters.stan",
+                 data = list(N = nrow(tsq_synth), t = tsq_synth$t, y = tsq_synth$f),
+                 chains = 1, iter = 1000)
 
-s <- extract(fit)
-max_lik_idx <- which(s$lp__ == max(s$lp__))
-s$alpha[max_lik_idx]
-s$rho[max_lik_idx]
-s$sigma[max_lik_idx]
-qplot(s$alpha,s$rho) + geom_point(aes(x,y), color = "red", data = tibble(x=s$alpha[max_lik_idx],y=s$rho[max_lik_idx]))
-
-# check if there's much uncertainty in the derivative that's attributable to the hyperparameters
-f <- function(alpha,rho,sigma) {
-  p <- p_dotXn(t = expt_synth %>% pull(t), Xn = expt_synth %>% pull(f), phi_n = list(alpha,rho), sigma_n = sigma)
-  tibble(mn = p$mn %>% as.vector, sigma = diag(p$Kn))
+get_ml_from_stan_samples <- function(fit) {
+  s <- extract(fit)
+  max_lik_idx <- which(s$lp__ == max(s$lp__))
+  return(list(alpha = s$alpha[max_lik_idx],
+              rho = s$rho[max_lik_idx],
+              sigma = s$sigma[max_lik_idx]))
 }
 
-dfs <- tibble(alpha = s$alpha, rho = s$rho, sigma = s$sigma) %>% pmap(f) %>%
-  map2(1:500, function(x,y) x %>% mutate(lower = mn - 2*sigma, upper = mn + 2*sigma, sample = y, t = expt_synth %>% pull(t))) %>% bind_rows
-dfs %>% ggplot(aes(t,mn,group = sample)) + geom_line(alpha = 0.1) + stat_function(fun = exp, color = "red")
+expt_hyperpar <- get_ml_from_stan_samples(fit_expt)
+tsq_hyperpar <- get_ml_from_stan_samples(fit_tsq)
 
-dfs %>% group_by(t) %>% summarize(med = median(mn), lower = min(lower), upper = max(upper)) %>%
-  ggplot(aes(t,med)) +
+# get function GP estimates and derivative estimates
+data_to_gp <- function(t, Xn, hyperpar, p, f) {
+  
+  # f is true function
+  p_pars <- p(t = t, Xn = Xn, phi_n = hyperpar[1:2], sigma_n = hyperpar[[3]])
+  gp <- tibble(t = t, mu = p_pars$mn, sigma = sqrt(diag(p_pars$Kn))) %>%
+    mutate(f = f(t)) %>%
+    mutate(lower = mu - 2*sigma, upper = mu + 2*sigma)
+  
+  return(gp)
+}
+
+Xn_posterior_expt <- data_to_gp(t = expt_synth$t, Xn = expt_synth$f, hyperpar = expt_hyperpar, p_Xn, exp)
+Xn_posterior_expt %>% ggplot(aes(t, mu)) + geom_ribbon(aes(ymin = lower, ymax = upper), fill = "grey70") + geom_line() + geom_line(aes(y = f), color = "red")
+
+dotXn_posterior_expt <- data_to_gp(t = expt_synth$t, Xn = expt_synth$f, hyperpar = expt_hyperpar, p_dotXn, exp)
+dotXn_posterior_expt %>% ggplot(aes(t, mu)) + geom_ribbon(aes(ymin = lower, ymax = upper), fill = "grey70") + geom_line() + geom_line(aes(y = f), color = "red")
+
+Xn_posterior_tsq <- data_to_gp(t = tsq_synth$t, Xn = tsq_synth$f, hyperpar = tsq_hyperpar, p_Xn, function(t) (1/2)*t^2)
+Xn_posterior_tsq %>% ggplot(aes(t, mu)) + geom_ribbon(aes(ymin = lower, ymax = upper), fill = "grey70") + geom_line() + geom_line(aes(y = f), color = "red")
+
+dotXn_posterior_tsq <- data_to_gp(t = tsq_synth$t, Xn = tsq_synth$f, hyperpar = tsq_hyperpar, p_dotXn, function(t) t)
+dotXn_posterior_tsq %>% ggplot(aes(t, mu)) + geom_ribbon(aes(ymin = lower, ymax = upper), fill = "grey70") + geom_line() + geom_line(aes(y = f), color = "red")
+dotXn_posterior_tsq %>% mutate(ci = lower < f & f < upper) %>% summarize(ci = mean(ci))
+
+#######################
+#######################
+# test create_p_dotXnS
+#######################
+#######################
+
+# get mean and covariance of derivative GP at the time points we have data at
+p <- p_dotXn(tn = expt_synth$t, Xn = expt_synth$f, phi_n = expt_hyperpar[1:2], sigma_n = expt_hyperpar[[3]])
+
+# use the mean to estimate the hyper parameters of the GP regression
+fit_dotXn <- stan("stan/fit_hyperparameters.stan",
+                data = list(N = nrow(expt_synth), t = expt_synth$f, y = p$condMean),
+                chains = 1, iter = 1000)
+
+dotXn_expt_hyperpar <- get_ml_from_stan_samples(fit_dotXn)
+qplot(expt_synth$f, p$condMean)
+
+# get smoothed version of state as in the input in regression
+p_state <- p_Xn(tn = expt_synth$t, Xn = expt_synth$f, phi_n = expt_hyperpar[1:2], sigma_n = expt_hyperpar[[3]])
+
+# create sampling function
+p_dotXnS <- create_p_dotXnS(Xn_list = list(p_state$condMean), mn = p$condMean, Kn = p$condVar, theta = dotXn_expt_hyperpar[1:2])
+
+# sample from it
+p_dotXnS(0.6)
+p_dotXnS(1)
+p_dotXnS(0.5)
+p_dotXnS(0.1)
+p_dotXnS(0.2)
+p_dotXnS(1.2)
+
+#
+first_try <- function(xs) {
+  p_dotXnS <- create_p_dotXnS(Xn_list = list(p_state$mn), mn = p$mn, Kn = p$Kn, theta = dotXn_expt_hyperpar[1:2])
+  ret <- p_dotXnS(xs)
+  tibble(mu = as.numeric(ret$mu), sigma = as.numeric(ret$sigma))
+}
+
+map(seq(0,4,0.1), first_try) %>% bind_rows %>% mutate(x = seq(0,4,0.1)) %>% mutate(lower = mu - 2*sigma, upper = mu + 2*sigma) %>%
+  ggplot(aes(x,mu)) +
   geom_ribbon(aes(ymin = lower, ymax = upper), fill = "grey70") +
   geom_line() +
-  stat_function(fun = function(x) x, color = "red")
-
-# get mn and Kn now that we have hyperparameter point estimates
-p_Xn_pars <- p_Xn(t = expt_synth$t, Xn = expt_synth$f, phi_n = list(alpha = 3.24, rho = 1.29), sigma_n = 0.055)
-mn <- p_Xn_pars$mn %>% as.vector
-Kn <- p_Xn_pars$Kn
-Xn_est <- tibble(t = expt_synth$t, mu = mn, sigma = sqrt(diag(Kn))) %>%
-  mutate(f = exp(t)) %>% mutate(lower = mu - 2*sigma, upper = mu + 2*sigma)# %>%
-  #ggplot(aes(t,mu)) + geom_ribbon(aes(ymin = lower, ymax = upper), fill = "grey70") + geom_line() + stat_function(fun = exp, color = "red")
-
-p_dotXn_pars <- p_dotXn(t = expt_synth %>% pull(t), Xn = expt_synth %>% pull(f), phi_n = list(alpha = 3.24, rho = 1.29), sigma_n = 0.055)
-mn <- p_dotXn_pars$mn %>% as.vector
-Kn <- p_dotXn_pars$Kn
-
-dotXn_est <- tibble(t = expt_synth %>% pull(t), mu = mn, sigma = diag(Kn)) %>% mutate(f = exp(t)) %>% mutate(lower = mu - 2*sqrt(sigma), upper = mu + 2*sqrt(sigma))
-dotXn_est %>% ggplot(aes(t,mu)) + geom_ribbon(aes(ymin = lower, ymax = upper), fill = "grey70") + geom_line() + stat_function(fun = exp, color = "red")
+  geom_abline(intercept = 0, slope = 1, color = "red")
