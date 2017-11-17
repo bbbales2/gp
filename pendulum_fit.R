@@ -7,6 +7,7 @@ library(deSolve)
 library(GGally)
 library(purrr)
 library(parallel)
+library(assist)
 
 setwd("~/gp")
 
@@ -30,8 +31,8 @@ lout = as_tibble(ode(y = y0, times = times, func = linearized, parms = c(gl = gl
 
 df = bind_rows(lout %>% mutate(type = "linearized"), fout %>% mutate(type = "full")) %>% mutate(type = factor(type))
 
-df = df %>% mutate(ynoise = y + rnorm(nrow(df), mean = 0.0, sd = 0.01)) %>%
-  mutate(ypnoise = yp + rnorm(nrow(df), mean = 0.0, sd = 0.01))
+df = df %>% mutate(ynoise = y + rnorm(nrow(df), mean = 0.0, sd = 0.1)) %>%
+  mutate(ypnoise = yp + rnorm(nrow(df), mean = 0.0, sd = 0.1))
 
 dft = df %>% filter(type == "full") %>%
   mutate(yd = (lead(y) - lag(y)) / (2.0 * h)) %>%
@@ -42,6 +43,11 @@ df %>% ggplot(aes(time, y)) +
   geom_line(aes(colour = type)) +
   geom_point(aes(time, ynoise, colour = type), size = 0.5)
 
+fit = ssr(ypd ~ y, rk = linear(yp), scale = cbind(1, dft$yp), data = dft)
+summary(fit)
+as.tibble(list(predict = predict(fit)$fit, reference = dft$ypd, t = dft$time)) %>%
+  gather(which, value, c(predict, reference)) %>% ggplot(aes(t, value)) +
+  geom_jitter(aes(color = which, shape = which))
 
 # Fit data using finite difference derivative approximations and linear system
 {
@@ -175,7 +181,7 @@ df %>% ggplot(aes(time, y)) +
                alphaypp = 0.25,
                rho = 2.0)
   
-  fit_gp_fixed = stan("models/fit_gp_fixed_hyperparam.stan", data = sdata, chains = 4, cores = 4, iter = 1000)
+  fit_gp_fixed = stan("models/fit_gp_fixed_hyperparam.stan", data = sdata, chains = 4, cores = 4, iter = 2000)
   
   s1 = as_tibble(extract(fit_gp_fixed, c("a", "b", "c", "d")))
   

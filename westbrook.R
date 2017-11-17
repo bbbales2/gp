@@ -16,9 +16,7 @@ df = df0 %>% select(time = GAME_CLOCK, period = PERIOD, result = SHOT_RESULT, na
 df2 = df %>% mutate(gtime = 48 - remaining_minutes,
                     x = -(remaining_minutes - 24) / 48.0,
                     y = resultBin) %>%
-  select(gtime, period, x, y, result) %>%
-  mutate(y = sample(c(0, 1), n(), replace = TRUE)) %>%
-  sample_n(200)
+  select(gtime, period, x, y, result)
 
 sdata = list(N = dim(df2)[[1]],
              M = 10,
@@ -26,11 +24,11 @@ sdata = list(N = dim(df2)[[1]],
              x = df2$x,
              y = df2$y)
 
-fit = stan('~/gp/models/westbrook.stan', data = sdata, chains = 4, cores = 4, iter = 8000)
+fit = stan('~/gp/models/westbrook.stan', data = sdata, chains = 4, cores = 4, iter = 2000)
 
 launch_shinystan(fit)
 
-fit_exact = stan('~/gp/models/westbrook_exact.stan', data = sdata, chains = 4, cores = 4, iter = 8000)
+fit_exact = stan('~/gp/models/westbrook_exact.stan', data = sdata, chains = 4, cores = 4, iter = 2000)
 
 sdata = list(N = dim(df2)[[1]],
              T = 4,

@@ -33,42 +33,27 @@ functions {
 data {
   int N;
   int M;
-  real x[N];
-  int y[N];
+  int I;
   real scale;
-}
-
-transformed data {
- # real sigma = 1.0;
+  real x[N];
+  real xi[I];
 }
 
 parameters {
   vector[M] z;
-  real<lower = 0.0> sigma;
   real<lower = 0.0> l;
 }
 
 transformed parameters {
-  vector[N] q = approx_L(M, scale, x, sigma, l) * z;
+  vector[N] f = inv_logit(approx_L(M, scale, x, 1.0, l) * z);
+  real fi = sum((xi[2] - xi[1]) * inv_logit(approx_L(M, scale, xi, 1.0, l) * z));
+  
+  f = f / fi;
 }
 
 model {
-  l ~ gamma(4, 4);
-  z[1] ~ normal(0.0, 0.01);
-  z[2:M] ~ normal(0, 1);
-  sigma ~ normal(0, 1);
+  l ~ inv_gamma(4.0, 4.0);
+  z ~ normal(0, 1);
   
-  y ~ bernoulli_logit(q);
-}
-
-generated quantities {
-  #vector[N] f;
-  real error = -20;
-  {
-    matrix[N, M] L = approx_L(M, scale, x, sigma, l);
-    
-    #f = inv_logit(L * z);
-    
-    error = log10(max(fabs(cov_exp_quad(x, sigma, l) - L * L')) + 1e-20);
-  }
+  target += sum(log(f));
 }

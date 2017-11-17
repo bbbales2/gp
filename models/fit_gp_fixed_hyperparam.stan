@@ -11,22 +11,21 @@ data {
 }
 
 transformed data {
-  real ya[N];
-  real ypa[N];
-  matrix[N, N] Sigma;
-  matrix[N, N] L_Sigma;
+  matrix[N, N] Sigma_y;
+  matrix[N, N] Sigma_yp;
+  matrix[N, N] L_Sigma_y;
+  matrix[N, N] L_Sigma_yp;
   
-  for(n in 1 : N) {
-    ya[n] = y[n];
-    ypa[n] = yp[n];
+  Sigma_y = cov_exp_quad(to_array_1d(y), 1.0, rho);
+  Sigma_yp = cov_exp_quad(to_array_1d(yp), 1.0, rho);
+  
+  for(n in 1:N) {
+    Sigma_y[n, n] = Sigma_y[n, n] + 1e-12;
+    Sigma_yp[n, n] = Sigma_yp[n, n] + 1e-12;
   }
-  
-  Sigma = cov_exp_quad(ya, 1.0, rho) .* cov_exp_quad(ypa, 1.0, rho);
-  
-  for(n in 1:N)
-    Sigma[n, n] = Sigma[n, n] + 1e-12;
 
-  L_Sigma = cholesky_decompose(Sigma);
+  L_Sigma_y = cholesky_decompose(Sigma_y);
+  L_Sigma_yp = cholesky_decompose(Sigma_yp);
 }
 
 parameters {
@@ -37,33 +36,36 @@ parameters {
   real<lower=0> sigmayp;
   real<lower=0> sigmaypp;
   
-  vector[N] etay;
-  vector[N] etayp;
+  vector[N] za;
+  vector[N] zb;
+  vector[N] zc;
+  vector[N] zd;
 }
 
 transformed parameters {
-  vector[N] ypm;
-  vector[N] yppm;
-  
-  ypm = alphayp * L_Sigma * etay;
-  yppm = alphaypp * L_Sigma * etayp;
+  vector[N] aya = alphayp * L_Sigma_y * za;
+  vector[N] byb = alphaypp * L_Sigma_yp * zb;
+  vector[N] cyc = alphayp * L_Sigma_y * zc;
+  vector[N] dyd = alphaypp * L_Sigma_yp * zd;
 }
 
 model {
   sigmayp ~ normal(0, 1.0);
   sigmaypp ~ normal(0, 1.0);
-  
-  etay ~ normal(0, 1);
-  etayp ~ normal(0, 1);
-  
-  yd ~ normal(a * y + b * yp + ypm, sigmayp);
-  ypd ~ normal(c * y + d * yp + yppm, sigmaypp);
+
+  za ~ normal(0, 1);
+  zb ~ normal(0, 1);
+  zc ~ normal(0, 1);
+  zd ~ normal(0, 1);
+
+  yd ~ normal(a * (y + aya) + b * (yp + byb), sigmayp);
+  ypd ~ normal(c * (y + cyc) + d * (yp + dyd), sigmaypp);
 }
 
 generated quantities {
   vector[N] lyp;
   vector[N] lypp;
   
-  lyp = a * y + b * yp;
-  lypp = c * y + d * yp;
+  lyp = a * (y + aya) + b * (yp + byb);
+  lypp = c * (y + cyc) + d * (yp + dyd);
 }
