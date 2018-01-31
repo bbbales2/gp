@@ -36,7 +36,10 @@ transformed parameters {
 }
 
 model {
-  c ~ normal(0.0, 10.0);
+  sigmay ~ normal(0.0, 1.0);
+  sigmayp ~ normal(0.0, 1.0);
+  
+  c ~ normal(-9.8, 1.0);
   
   y ~ normal(yh[:, 1], sigmay);
   yp ~ normal(yh[:, 2], sigmayp);
