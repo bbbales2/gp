@@ -39,11 +39,11 @@ df_1000 <- sim_lorenz_0_1(0.00001)
 
 #plot trajectories
 state_z_0_1_1000 <- df_1000 %>% ggplot(aes(time, z)) + geom_line()
-state_z_0_1_1000 + geom_line(aes(time, z), color = "red", data=df_10) + geom_point(aes(time, z), color = "red", data=lorenz_df[[1]])
-state_z_0_1_1000 + geom_line(aes(time, z), color = "red", data=df_20) + geom_point(aes(time, z), color = "red", data=lorenz_df[[2]])
-state_z_0_1_1000 + geom_line(aes(time, z), color = "red", data=df_40) + geom_point(aes(time, z), color = "red", data=lorenz_df[[3]])
-state_z_0_1_1000 + geom_line(aes(time, z), color = "red", data=df_80) + geom_point(aes(time, z), color = "red", data=lorenz_df[[4]])
-state_z_0_1_1000 + geom_line(aes(time, z), color = "red", data=df_160) + geom_point(aes(time, z), color = "red", data=lorenz_df[[5]])
+s1 <- state_z_0_1_1000 + geom_line(aes(time, z), color = "red", data=df_10) + geom_point(aes(time, z), color = "red", data=lorenz_df[[1]])
+s2 <- state_z_0_1_1000 + geom_line(aes(time, z), color = "red", data=df_20) + geom_point(aes(time, z), color = "red", data=lorenz_df[[2]])
+s3 <- state_z_0_1_1000 + geom_line(aes(time, z), color = "red", data=df_40) + geom_point(aes(time, z), color = "red", data=lorenz_df[[3]])
+s4 <- state_z_0_1_1000 + geom_line(aes(time, z), color = "red", data=df_80) + geom_point(aes(time, z), color = "red", data=lorenz_df[[4]])
+s5 <- state_z_0_1_1000 + geom_line(aes(time, z), color = "red", data=df_160) + geom_point(aes(time, z), color = "red", data=lorenz_df[[5]])
 ```
 
 Get Hyperparameter Posterior Draws
@@ -117,10 +117,26 @@ draw_post_deriv_samples <- function(hyper_params, soln_df, tis) {
   deriv_draws_list %>% as_tibble %>% mutate(time = tis) %>% gather(sample, value, -time)
 }
 
-t <- draw_post_deriv_samples(hyperparam_draws[[2]], lorenz_df[[2]], tis = seq(0, 1, by = 0.01))
+t <- draw_post_deriv_samples(hyperparam_draws[[3]], lorenz_df[[3]], tis = seq(0, 1, by = 0.01))
 
-lorenz_df[[1]] %>% ggplot(aes(centered_time, dzdt)) + geom_point(color = "red") + geom_line(aes(time, value, group = sample), alpha = 0.05, data = t) + geom_line(aes(centered_time, dzdt),data = df_1000, color = "green")
+lorenz_df[[3]] %>% ggplot(aes(centered_time, dzdt)) + geom_point(color = "red") + geom_line(aes(time, value, group = sample), alpha = 0.05, data = t) + geom_line(aes(centered_time, dzdt),data = df_1000, color = "green")
 ```
+
+```{r}
+library(purrr)
+library(gridExtra)
+
+posterior_deriv_draws <- map2(hyperparam_draws, lorenz_df, draw_post_deriv_samples, tis = seq(0, 1, by = 0.01))
+
+p1 <- lorenz_df[[1]] %>% ggplot(aes(centered_time, dzdt)) + geom_point(color = "red") + geom_line(aes(time, value, group = sample), alpha = 0.05, data = posterior_deriv_draws[[1]]) + geom_line(aes(centered_time, dzdt),data = df_1000, color = "green")
+p2 <- lorenz_df[[2]] %>% ggplot(aes(centered_time, dzdt)) + geom_point(color = "red") + geom_line(aes(time, value, group = sample), alpha = 0.05, data = posterior_deriv_draws[[2]]) + geom_line(aes(centered_time, dzdt),data = df_1000, color = "green")
+p3 <- lorenz_df[[3]] %>% ggplot(aes(centered_time, dzdt)) + geom_point(color = "red") + geom_line(aes(time, value, group = sample), alpha = 0.05, data = posterior_deriv_draws[[3]]) + geom_line(aes(centered_time, dzdt),data = df_1000, color = "green")
+p4 <- lorenz_df[[4]] %>% ggplot(aes(centered_time, dzdt)) + geom_point(color = "red") + geom_line(aes(time, value, group = sample), alpha = 0.05, data = posterior_deriv_draws[[4]]) + geom_line(aes(centered_time, dzdt),data = df_1000, color = "green")
+p5 <- lorenz_df[[5]] %>% ggplot(aes(centered_time, dzdt)) + geom_point(color = "red") + geom_line(aes(time, value, group = sample), alpha = 0.05, data = posterior_deriv_draws[[5]]) + geom_line(aes(centered_time, dzdt),data = df_1000, color = "green")
+
+grid.arrange(s1, s2, s3, s4, s5, p1, p2, p3, p4, p5, layout_matrix = rbind(c(1,2,3,4,5), c(6,7,8,9,10)))
+```
+
 
 Try doing lm ala UW paper.
 
