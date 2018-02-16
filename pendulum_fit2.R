@@ -21,7 +21,7 @@ linearized = function(t, state, parameters) {
 }
 
 h = 0.05
-times = seq(0, 10, by = h)
+times = seq(0, 4, by = h)
 y0 = c(y = 1.0 * pi / 4.0, yp = 0.0)
 fout = as_tibble(ode(y = y0, times = times, func = full, parms = c(gl = gl))[,])
 lout = as_tibble(ode(y = y0, times = times, func = linearized, parms = c(gl = gl))[,])
