@@ -17,7 +17,6 @@ parameters {
   //real b;
   real c;
   //real d;
-  real<lower=0> tau[2];
   real<lower=0> sigmay;
   real<lower=0> sigmayp;
   real zz[N, 2];
@@ -25,15 +24,7 @@ parameters {
 
 transformed parameters {
   real z[N, 2];
-  real zet[N, 2];
   matrix[2, 2] A;
-  
-  for(n in 1:N) {
-    for(i in 1:2) {
-      zet[n, i] = zz[n, i] * tau[i];
-    }
-  }
-  
   
   A[1, 1] = 0.0;
   A[1, 2] = 1.0;
@@ -44,22 +35,18 @@ transformed parameters {
     vector[2] out = matrix_exp(t[1] * A) * to_vector(y0);
     //integrate_ode_rk45(sho, y0, 0.0, { t[1] }, theta, x_r, x_i);
     for(i in 1:2)
-      z[1, i] = out[i] + zet[1, i];
+      z[1, i] = out[i];
     
     for(n in 2:N) {
       out = matrix_exp((t[n] - t[n - 1]) * A) * to_vector(z[n - 1]);
       //out = integrate_ode_rk45(sho, z[n - 1], t[n - 1], { t[n] }, theta, x_r, x_i);
       for(i in 1:2)
-        z[n, i] = out[i] + zet[n, i];
+        z[n, i] = out[i];
     }
   }
 }
 
 model {
-  to_array_1d(zz) ~ normal(0.0, 1.0);
-  //to_array_1d(z) ~ normal(to_array_1d(zmu), to_array_1d(epsilon));
-  
-  tau ~ normal(0.0, 1.0);
   sigmay ~ normal(0.0, 1.0);
   sigmayp ~ normal(0.0, 1.0);
   

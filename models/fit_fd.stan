@@ -8,16 +8,16 @@ data {
 }
 
 parameters {
-  real a;
-  real b;
+  //real a;
+  //real b;
   real c;
-  real d;
+  //real d;
   real<lower=0> sigmay;
   real<lower=0> sigmayp;
 }
 
 model {
-  yd ~ normal(a * y + b * yp, sigmay);
-  ypd ~ normal(c * y + d * yp, sigmayp);
+  yd ~ normal(0 * y + 1.0 * yp, sigmay);
+  ypd ~ normal(c * y + 0 * yp, sigmayp);
 }
 

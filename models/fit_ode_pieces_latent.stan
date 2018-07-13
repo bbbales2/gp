@@ -25,7 +25,6 @@ parameters {
   real<lower=0> tau[2];
   real<lower=0> sigmay;
   real<lower=0> sigmayp;
-  real<lower=0> epsilonz[N, 2];
   real zz[N, 2];
 }
 
@@ -34,30 +33,22 @@ transformed parameters {
   real z[N, 2];
   real epsilon[N, 2];
   
-  for(j in 1:N) {
-    for(i in 1:2) {
-      epsilon[j, i] = epsilonz[j, i] * tau[i];
-    }
-  }
-  
   theta[1] = c;
   
   {
     real out[1, 2] = integrate_ode_rk45(sho, y0, 0.0, { t[1] }, theta, x_r, x_i);
     for(i in 1:2)
-      z[1, i] = out[1, i] + zz[1, i] * epsilon[1, i];
+      z[1, i] = out[1, i] + zz[j, i] * tau[i];
     
     for(n in 2:N) {
       out = integrate_ode_rk45(sho, z[n - 1], t[n - 1], { t[n] }, theta, x_r, x_i);
       for(i in 1:2)
-        z[n, i] = out[1, i] + zz[n, i] * epsilon[n, i];
-    }
+        z[n, i] = out[1, i] + zz[j, i] * tau[i];
   }
 }
 
 model {
   to_array_1d(zz) ~ normal(0.0, 1.0);
-  to_array_1d(epsilonz) ~ normal(0.0, 1.0);
   //to_array_1d(z) ~ normal(to_array_1d(zmu), to_array_1d(epsilon));
   
   tau ~ normal(0.0, 1.0);

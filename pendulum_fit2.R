@@ -50,7 +50,7 @@ sdata = list(N = nrow(dft),
   
 fit_fd = stan("models/fit_fd.stan", data = sdata, cores = 4, iter = 2000)
   
-s1 = as_tibble(extract(fit_fd, c("a", "b", "c", "d")))
+s1 = as_tibble(extract(fit_fd, c("c")))
   
 s1 %>% ggplot(aes(c)) +
   geom_histogram() +
@@ -120,7 +120,7 @@ sdata = list(N = nrow(dft),
              y0 = y0)
 
 fit_latent = stan("models/fit_ode_pieces_linear_latent.stan", data = sdata,
-                  chains = 4, cores = 4, iter = 1000,
+                  chains = 4, cores = 4, iter = 2000,
                   control = list(max_treedepth = 8))
 
 launch_shinystan(fit_latent)
